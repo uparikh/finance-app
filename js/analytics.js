@@ -354,14 +354,6 @@
       let filteredTransactions = filterTransactions(_allTransactions, months);
       const catMap             = buildCategoryMap(_allCategories);
 
-      // If the selected range has no data but we have older data, show all available
-      // (e.g. user has data from 2020 but selected 6M range from 2026)
-      if (filteredSummaries.length === 0 && _allSummaries.length > 0 && months !== 0) {
-        filteredSummaries    = _allSummaries;
-        filteredTransactions = _allTransactions;
-        console.log('[Analytics] No data in range', months, '— showing all', _allSummaries.length, 'months');
-      }
-
       console.log('[Analytics] setTimeRange', months, 'summaries:', filteredSummaries.length, 'transactions:', filteredTransactions.length);
 
       AnalyticsScreen.renderOverviewCard(filteredSummaries);
@@ -457,32 +449,45 @@
      * @param {object[]} summaries  Sorted ascending by monthKey
      */
     renderTrendChart: function (summaries) {
-      // iOS fix: destroy old chart and replace the canvas element entirely.
-      // This prevents Chart.js from reusing a stale canvas context on iOS Safari.
+      // Destroy old chart instance
       if (_trendChart) {
         _trendChart.destroy();
         _trendChart = null;
       }
-      const trendOldEl = document.getElementById('trend-chart');
-      console.log('[Analytics] renderTrendChart: el=', !!trendOldEl, 'summaries=', summaries ? summaries.length : 0);
-      if (!trendOldEl) return;
-      const trendContainer = trendOldEl.parentElement;
-      if (!trendContainer) return;
-
-      // Always restore the canvas element (never replace it with text — that destroys the canvas)
-      trendContainer.innerHTML = '<canvas id="trend-chart" style="display:block;width:100%;height:220px;"></canvas>';
+      // Use the existing canvas — do NOT replace it with innerHTML
+      // (replacing resets dimensions to 0 on iOS Safari)
       const canvas = document.getElementById('trend-chart');
+      if (!canvas) return;
+
+      // Remove any "no data" message from previous render
+      const trendContainer = canvas.parentElement;
+      if (trendContainer) {
+        Array.from(trendContainer.children).forEach(function (child) {
+          if (child !== canvas) child.remove();
+        });
+      }
 
       if (!summaries || summaries.length === 0) {
-        // Show message as a sibling element, not by replacing the canvas
         canvas.style.display = 'none';
-        const msg = document.createElement('p');
-        msg.style.cssText = 'text-align:center;color:var(--text-secondary);font-size:13px;padding:40px 0;';
-        msg.textContent = 'Not enough data for this time range';
-        trendContainer.appendChild(msg);
+        if (trendContainer) {
+          const msg = document.createElement('p');
+          msg.style.cssText = 'text-align:center;color:var(--text-secondary);font-size:13px;padding:40px 0;';
+          msg.textContent = 'Not enough data for this time range';
+          trendContainer.appendChild(msg);
+        }
         return;
       }
       canvas.style.display = 'block';
+
+      // Set explicit pixel dimensions so Chart.js renders correctly on iOS
+      // Use the container width, falling back to screen width minus padding
+      if (trendContainer && trendContainer.offsetWidth > 0) {
+        canvas.width  = trendContainer.offsetWidth;
+        canvas.height = 220;
+      } else {
+        canvas.width  = window.innerWidth - 64;
+        canvas.height = 220;
+      }
 
       const { gridColor, textColor } = getChartColors();
 
@@ -1004,48 +1009,6 @@
   });
 
 
-  // ─── MutationObserver: re-render trend chart when analytics screen becomes active ──
-  // This catches the case where the screen transitions from hidden to visible
-  // and the trend chart canvas has 0 dimensions at render time.
-  function watchAnalyticsScreen() {
-    const screen = document.getElementById('screen-analytics');
-    if (!screen) {
-      // Screen not in DOM yet — retry after a short delay
-      setTimeout(watchAnalyticsScreen, 500);
-      return;
-    }
-    const observer = new MutationObserver(function (mutations) {
-      mutations.forEach(function (mutation) {
-        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-          const isActive = screen.classList.contains('active');
-          if (isActive) {
-            // Screen just became active.
-            // Wait 1 second for init() to complete (DB query + 350ms wait + chart render).
-            // Then check if the trend chart needs re-rendering.
-            setTimeout(function () {
-              if (!screen.classList.contains('active')) return; // user navigated away
-              const trendCanvas = document.getElementById('trend-chart');
-              const needsRender = _allSummaries.length > 0 && (
-                _trendChart === null ||
-                (trendCanvas && trendCanvas.offsetWidth === 0)
-              );
-              if (needsRender) {
-                console.log('[Analytics] MutationObserver: re-rendering trend chart after delay');
-                AnalyticsScreen.renderTrendChart(filterSummaries(_allSummaries, _activeRange));
-              }
-            }, 1000);
-          }
-        }
-      });
-    });
-    observer.observe(screen, { attributes: true, attributeFilter: ['class'] });
-  }
-  // Start watching after DOM is ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', watchAnalyticsScreen);
-  } else {
-    setTimeout(watchAnalyticsScreen, 1000);
-  }
 
   // ─── Export Global ──────────────────────────────────────────────────────────
   global.AnalyticsScreen = AnalyticsScreen;
