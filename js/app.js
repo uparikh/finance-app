@@ -287,45 +287,193 @@ async function initApp() {
   console.log('Finance App initialized ✅');
 }
 
-// ─── Global Bottom Sheet Swipe-to-Close (Fix 4) ──────────────────────────────
-// Uses event delegation on document.body to handle ALL bottom sheet panels,
-// including those injected dynamically by upload.js and transactions.js.
-// A downward swipe of 60px+ on any .bottom-sheet-panel or .bottom-sheet-handle
-// closes the sheet by removing .active from the panel and its backdrop.
+// ─── Global Bottom Sheet: Scroll Lock + Swipe-to-Close ───────────────────────
+// Handles ALL .bottom-sheet-panel elements (transactions edit, settings sheets,
+// upload edit sheet). Features:
+//   - Locks background scroll when any sheet is open
+//   - Swipe-down on the handle/header area follows the finger (real-time)
+//   - Dismiss if pulled >35% of sheet height or fast flick
+//   - Spring back if not far enough
+//   - Backdrop fades out immediately on dismiss
 
 (function () {
-  var _touchStartY = 0;
-  var _touchPanel  = null;
+  var _sheet = {
+    panel:       null,
+    backdrop:    null,
+    startY:      0,
+    lastY:       0,
+    startTime:   0,
+    onHandle:    false,
+    active:      false,
+  };
 
-  document.addEventListener('touchstart', function (e) {
-    var target = e.target;
-    // Walk up to find a bottom-sheet-panel
-    while (target && target !== document.body) {
-      if (target.classList && target.classList.contains('bottom-sheet-panel')) {
-        _touchPanel  = target;
-        _touchStartY = e.touches[0].clientY;
-        return;
-      }
-      target = target.parentElement;
+  // ── Scroll lock: prevent background scroll when a sheet is open ──────────
+  // We watch for .active being added to any .bottom-sheet-panel via MutationObserver
+  var _scrollLockCount = 0;
+
+  function _lockScroll() {
+    _scrollLockCount++;
+    document.body.style.overflow = 'hidden';
+  }
+
+  function _unlockScroll() {
+    _scrollLockCount = Math.max(0, _scrollLockCount - 1);
+    if (_scrollLockCount === 0) {
+      document.body.style.overflow = '';
     }
-    _touchPanel = null;
+  }
+
+  // Observe all bottom-sheet-panel elements for .active class changes
+  var _sheetObserver = new MutationObserver(function (mutations) {
+    mutations.forEach(function (m) {
+      if (m.type === 'attributes' && m.attributeName === 'class') {
+        var el = m.target;
+        if (!el.classList.contains('bottom-sheet-panel')) return;
+        if (el.classList.contains('active')) {
+          _lockScroll();
+        } else {
+          _unlockScroll();
+        }
+      }
+    });
+  });
+
+  // Start observing once DOM is ready
+  document.addEventListener('DOMContentLoaded', function () {
+    // Observe existing panels
+    document.querySelectorAll('.bottom-sheet-panel').forEach(function (p) {
+      _sheetObserver.observe(p, { attributes: true });
+    });
+    // Also observe body for dynamically injected panels
+    var bodyObserver = new MutationObserver(function (mutations) {
+      mutations.forEach(function (m) {
+        m.addedNodes.forEach(function (node) {
+          if (node.nodeType === 1) {
+            if (node.classList && node.classList.contains('bottom-sheet-panel')) {
+              _sheetObserver.observe(node, { attributes: true });
+            }
+            node.querySelectorAll && node.querySelectorAll('.bottom-sheet-panel').forEach(function (p) {
+              _sheetObserver.observe(p, { attributes: true });
+            });
+          }
+        });
+      });
+    });
+    bodyObserver.observe(document.body, { childList: true, subtree: true });
+  });
+
+  // ── Helper: find the panel and backdrop from a touch target ─────────────
+  function _findPanel(target) {
+    var el = target;
+    while (el && el !== document.body) {
+      if (el.classList && el.classList.contains('bottom-sheet-panel')) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  function _findBackdrop(panel) {
+    if (!panel || !panel.id) return null;
+    var id = panel.id
+      .replace('-panel', '-backdrop')
+      .replace(/-sheet$/, '-sheet-backdrop');
+    return document.getElementById(id) || null;
+  }
+
+  // ── Helper: is the touch on the handle or header area? ──────────────────
+  function _isOnHandle(touch, panel) {
+    // Check for .bottom-sheet-handle element
+    var handle = panel.querySelector('.bottom-sheet-handle');
+    if (handle) {
+      var r = handle.getBoundingClientRect();
+      // Allow a generous 60px zone around the handle
+      if (touch.clientY >= r.top - 10 && touch.clientY <= r.bottom + 50) return true;
+    }
+    // Also allow the top 70px of the panel (title area)
+    var panelRect = panel.getBoundingClientRect();
+    return touch.clientY <= panelRect.top + 70;
+  }
+
+  // ── Touch handlers ───────────────────────────────────────────────────────
+  document.addEventListener('touchstart', function (e) {
+    var panel = _findPanel(e.target);
+    if (!panel || !panel.classList.contains('active')) {
+      _sheet.active = false;
+      return;
+    }
+    _sheet.panel     = panel;
+    _sheet.backdrop  = _findBackdrop(panel);
+    _sheet.startY    = e.touches[0].clientY;
+    _sheet.lastY     = e.touches[0].clientY;
+    _sheet.startTime = Date.now();
+    _sheet.onHandle  = _isOnHandle(e.touches[0], panel);
+    _sheet.active    = true;
+    panel.style.transition = 'none';
   }, { passive: true });
 
-  document.addEventListener('touchend', function (e) {
-    if (!_touchPanel) return;
-    var dy = e.changedTouches[0].clientY - _touchStartY;
-    if (dy > 60) {
-      // Find and deactivate the panel and its backdrop
-      _touchPanel.classList.remove('active');
-      // Backdrop is the previous sibling or has id ending in '-backdrop'
-      var panelId   = _touchPanel.id;
-      var backdropId = panelId ? panelId.replace('-panel', '-backdrop').replace('-sheet', '-sheet-backdrop') : null;
-      if (backdropId) {
-        var backdrop = document.getElementById(backdropId);
-        if (backdrop) backdrop.classList.remove('active');
+  document.addEventListener('touchmove', function (e) {
+    if (!_sheet.active || !_sheet.onHandle) return;
+    var dy = e.touches[0].clientY - _sheet.startY;
+    _sheet.lastY = e.touches[0].clientY;
+    if (dy > 0) {
+      _sheet.panel.style.transform = 'translateX(-50%) translateY(' + dy + 'px)';
+      // Fade backdrop proportionally
+      if (_sheet.backdrop) {
+        _sheet.backdrop.style.opacity = String(Math.max(0, 1 - dy / 300));
       }
+      e.preventDefault();
     }
-    _touchPanel = null;
+  }, { passive: false });
+
+  document.addEventListener('touchend', function (e) {
+    if (!_sheet.active) return;
+    _sheet.active = false;
+
+    var panel    = _sheet.panel;
+    var backdrop = _sheet.backdrop;
+    if (!panel) return;
+
+    panel.style.transition = '';
+
+    if (!_sheet.onHandle) return; // not a handle swipe — spring back
+
+    var dy      = _sheet.lastY - _sheet.startY;
+    var elapsed = Date.now() - _sheet.startTime;
+    var vy      = dy / elapsed; // px/ms
+    var h       = panel.offsetHeight || 400;
+
+    var dismiss = dy > 0 && (dy > h * 0.35 || vy > 0.5);
+
+    if (dismiss) {
+      // Dismiss: slide out, fade backdrop immediately
+      panel.style.transition = 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1)';
+      panel.style.transform  = 'translateX(-50%) translateY(100%)';
+      if (backdrop) {
+        backdrop.style.transition = 'opacity 0.2s ease';
+        backdrop.style.opacity    = '0';
+      }
+      setTimeout(function () {
+        panel.classList.remove('active');
+        panel.style.transform  = '';
+        panel.style.transition = '';
+        if (backdrop) {
+          backdrop.classList.remove('active');
+          backdrop.style.opacity    = '';
+          backdrop.style.transition = '';
+        }
+      }, 280);
+    } else {
+      // Spring back
+      panel.style.transition = 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
+      panel.style.transform  = 'translateX(-50%) translateY(0)';
+      if (backdrop) backdrop.style.opacity = '';
+      setTimeout(function () {
+        panel.style.transition = '';
+      }, 300);
+    }
+
+    _sheet.panel    = null;
+    _sheet.backdrop = null;
   }, { passive: true });
 })();
 
