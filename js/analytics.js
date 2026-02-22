@@ -174,6 +174,13 @@
     // Clear content
     content.innerHTML = '';
 
+    // Lock the parent screen's scroll to prevent scroll-through (Fix 11)
+    const parentScreen = el('screen-analytics');
+    if (parentScreen) {
+      parentScreen._savedScrollTop = parentScreen.scrollTop;
+      parentScreen.style.overflow = 'hidden';
+    }
+
     // Show overlay
     overlay.style.display = 'flex';
     requestAnimationFrame(function () {
@@ -199,6 +206,16 @@
     const overlay = el('analytics-drilldown');
     if (!overlay) return;
     overlay.style.transform = 'translateX(100%)';
+
+    // Restore parent screen scroll
+    const parentScreen = el('screen-analytics');
+    if (parentScreen) {
+      parentScreen.style.overflow = '';
+      if (parentScreen._savedScrollTop !== undefined) {
+        parentScreen.scrollTop = parentScreen._savedScrollTop;
+      }
+    }
+
     setTimeout(function () {
       overlay.style.display = 'none';
       _drillChart = destroyChart(_drillChart);
@@ -276,7 +293,14 @@
           plugins: {
             legend: {
               display: opts.datasets(filtered).length > 1,
-              labels: { color: textColor, font: { size: 12 } },
+              labels: {
+                color: textColor,
+                font: { size: 12 },
+                usePointStyle: true,
+                pointStyle: 'line',
+                boxWidth: 24,
+                boxHeight: 3,
+              },
             },
             tooltip: {
               enabled: false,
@@ -739,13 +763,14 @@
                   {
                     label: 'Net Saved',
                     data: filtered.map(function (s) { return (s.totalIncome || 0) - (s.totalExpenses || 0); }),
-                    borderColor: '#1A1A2E',
+                    // Use white in dark mode, near-black in light mode
+                    borderColor: (document.documentElement.getAttribute('data-theme') === 'dark') ? '#FFFFFF' : '#1A1A2E',
                     backgroundColor: 'transparent',
                     borderWidth: 2.5,
                     tension: 0.4,
                     pointRadius: 4,
                     pointHoverRadius: 7,
-                    pointBackgroundColor: '#1A1A2E',
+                    pointBackgroundColor: (document.documentElement.getAttribute('data-theme') === 'dark') ? '#FFFFFF' : '#1A1A2E',
                   },
                 ];
               },
@@ -791,7 +816,7 @@
                   labels: filtered.map(function (s) { return monthKeyToShort(s.monthKey); }),
                   values: filtered.map(function (s) {
                     if (!s.totalIncome || s.totalIncome === 0) return 0;
-                    return Math.max(0, Math.round((s.netSavings / s.totalIncome) * 100));
+                    return Math.round((s.netSavings / s.totalIncome) * 100);
                   }),
                   colors: filtered.map(function (s) {
                     const rate = s.totalIncome > 0 ? (s.netSavings / s.totalIncome) * 100 : 0;
@@ -917,7 +942,7 @@
           datasets: [{
             data: summaries.map(function (s) {
               if (!s.totalIncome || s.totalIncome === 0) return 0;
-              return Math.max(0, Math.round((s.netSavings / s.totalIncome) * 100));
+              return Math.round((s.netSavings / s.totalIncome) * 100);
             }),
             backgroundColor: summaries.map(function (s) {
               const rate = s.totalIncome > 0 ? (s.netSavings / s.totalIncome) * 100 : 0;

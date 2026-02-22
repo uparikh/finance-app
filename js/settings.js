@@ -681,11 +681,25 @@
         return { r: r, g: g, b: b };
       }
 
+      // Secondary color: shift hue by ~40° by rotating RGB channels slightly
+      // This gives a complementary gradient partner for the summary card
+      function deriveSecondary(r, g, b) {
+        // Blend toward purple/violet for a pleasing gradient
+        var sr = Math.min(255, Math.round(r * 0.75 + b * 0.4));
+        var sg = Math.min(255, Math.round(g * 0.6));
+        var sb = Math.min(255, Math.round(b * 0.7 + r * 0.5));
+        return { r: sr, g: sg, b: sb };
+      }
+
       const { r, g, b } = hexToRgb(hex);
-      root.style.setProperty('--accent',          hex);
-      root.style.setProperty('--accent-primary',   hex);
-      root.style.setProperty('--accent-light',     'rgba(' + r + ',' + g + ',' + b + ',0.12)');
-      root.style.setProperty('--accent-rgb',       r + ',' + g + ',' + b);
+      const sec = deriveSecondary(r, g, b);
+
+      root.style.setProperty('--accent',               hex);
+      root.style.setProperty('--accent-primary',        hex);
+      root.style.setProperty('--accent-rgb',            r + ',' + g + ',' + b);
+      root.style.setProperty('--accent-secondary-rgb',  sec.r + ',' + sec.g + ',' + sec.b);
+      root.style.setProperty('--accent-light',          'rgba(' + r + ',' + g + ',' + b + ',0.12)');
+      root.style.setProperty('--accent-glow',           'rgba(' + r + ',' + g + ',' + b + ',0.25)');
 
       // Update theme-color meta for browser chrome
       const themeMeta = document.querySelector('meta[name="theme-color"]:not([media])');

@@ -56,6 +56,12 @@
     parsing.style.display = state === 'parsing' ? '' : 'none';
     review.style.display  = state === 'review'  ? '' : 'none';
 
+    // Show/hide the fixed save bar (injected into body)
+    const saveBar = el('upload-save-bar-fixed');
+    if (saveBar) {
+      saveBar.style.display = state === 'review' ? 'flex' : 'none';
+    }
+
     // Update header title and back button visibility
     const headerTitle  = el('upload-header-title');
     const backBtn      = el('upload-back-btn');
@@ -70,6 +76,14 @@
     if (headerAction) {
       headerAction.style.display = state === 'idle' ? '' : 'none';
     }
+  }
+
+  /**
+   * Returns true if the upload screen is currently in review state
+   * (i.e. the user has pending transactions that haven't been saved yet).
+   */
+  function isInReviewState() {
+    return pendingTransactions.length > 0;
   }
 
   // ─── Progress Simulation ─────────────────────────────────────────────────────
@@ -603,11 +617,13 @@
    * Updates the save button text with the current transaction count.
    */
   function updateSaveButton() {
+    const text = 'Save ' + pendingTransactions.length + ' Transaction' +
+      (pendingTransactions.length !== 1 ? 's' : '');
     const saveBtn = el('save-btn');
-    if (saveBtn) {
-      saveBtn.textContent = 'Save ' + pendingTransactions.length + ' Transaction' +
-        (pendingTransactions.length !== 1 ? 's' : '');
-    }
+    if (saveBtn) saveBtn.textContent = text;
+    // Also update the fixed save bar button
+    const saveBarSave = el('save-bar-save');
+    if (saveBarSave) saveBarSave.textContent = text;
   }
 
   // ─── Edit Bottom Sheet ───────────────────────────────────────────────────────
@@ -1087,6 +1103,36 @@
   function _ensureBottomSheet() {
     if (el('edit-sheet-backdrop')) return; // already injected
 
+    // ── Fixed save bar (Fix 1) ──────────────────────────────────────────────
+    // Injected into body so position:fixed works correctly on iOS Safari.
+    if (!el('upload-save-bar-fixed')) {
+      const saveBar = document.createElement('div');
+      saveBar.id = 'upload-save-bar-fixed';
+      saveBar.style.cssText = `
+        display: none;
+        position: fixed;
+        bottom: calc(56px + 12px + env(safe-area-inset-bottom));
+        left: 50%;
+        transform: translateX(-50%);
+        width: 100%;
+        max-width: var(--app-max-width, 430px);
+        padding: 12px 20px;
+        background: var(--bg-primary);
+        border-top: 0.5px solid var(--border);
+        border-radius: 16px 16px 0 0;
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+        gap: 12px;
+        z-index: 40;
+        align-items: center;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+      `;
+      saveBar.innerHTML =
+        '<button id="save-bar-cancel" class="btn btn-ghost" style="flex:1;" aria-label="Cancel">Cancel</button>' +
+        '<button id="save-bar-save" class="btn btn-primary" style="flex:2;" aria-label="Save transactions">Save Transactions</button>';
+      document.body.appendChild(saveBar);
+    }
+
     const html =
       '<div id="edit-sheet-backdrop" class="bottom-sheet-backdrop" aria-hidden="true"></div>' +
       '<div id="edit-sheet-panel" class="bottom-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="edit-sheet-title">' +
@@ -1230,13 +1276,25 @@
       }
     });
 
-    // ── Wire up save button ─────────────────────────────────────────────────
+    // ── Wire up fixed save bar (Fix 1) ──────────────────────────────────────
+    const saveBarSave   = el('save-bar-save');
+    const saveBarCancel = el('save-bar-cancel');
+    if (saveBarSave)   saveBarSave.onclick   = saveAllTransactions;
+    if (saveBarCancel) saveBarCancel.onclick = function () {
+      pendingTransactions = [];
+      currentParseResult = null;
+      showState('idle');
+      const fi = el('pdf-file-input');
+      if (fi) fi.value = '';
+    };
+
+    // ── Wire up save button (in-page, kept for compatibility) ───────────────
     const saveBtn = el('save-btn');
     if (saveBtn) {
       saveBtn.onclick = saveAllTransactions;
     }
 
-    // ── Wire up cancel button ───────────────────────────────────────────────
+    // ── Wire up cancel button (in-page) ────────────────────────────────────
     const cancelBtn = el('review-cancel-btn');
     if (cancelBtn) {
       cancelBtn.onclick = function () {
@@ -1256,6 +1314,19 @@
     if (sheetClose)  sheetClose.onclick  = closeEditSheet;
     if (sheetCancel) sheetCancel.onclick = closeEditSheet;
     if (backdrop)    backdrop.onclick    = closeEditSheet;
+
+    // ── Swipe down to close edit sheet (Fix 4) ──────────────────────────────
+    const panel = el('edit-sheet-panel');
+    if (panel) {
+      var touchStartY = 0;
+      panel.addEventListener('touchstart', function (e) {
+        touchStartY = e.touches[0].clientY;
+      }, { passive: true });
+      panel.addEventListener('touchend', function (e) {
+        var dy = e.changedTouches[0].clientY - touchStartY;
+        if (dy > 60) closeEditSheet(); // swipe down 60px+ closes sheet
+      }, { passive: true });
+    }
 
     // ── Wire up edit sheet save ─────────────────────────────────────────────
     const sheetSave = el('edit-sheet-save');
@@ -1285,6 +1356,7 @@
     loadRecentUploads:   loadRecentUploads,
     showState:           showState,
     showToast:           showToast,
+    isInReviewState:     isInReviewState,
   };
 
   global.UploadScreen = UploadScreen;

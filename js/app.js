@@ -89,11 +89,27 @@ function wireBottomNav() {
   navItems.forEach(item => {
     item.addEventListener('click', () => {
       const target = item.getAttribute('data-nav');
-      if (target) {
-        navigateTo(target); // defined in router.js
-        // Initialize screen-specific logic after navigation
-        onScreenActivated(target);
+      if (!target) return;
+
+      // Fix 3: Warn user if they navigate away from upload review state
+      if (target !== 'upload' &&
+          typeof UploadScreen !== 'undefined' &&
+          typeof UploadScreen.isInReviewState === 'function' &&
+          UploadScreen.isInReviewState()) {
+        const confirmed = window.confirm(
+          '⚠️ Unsaved Transactions\n\n' +
+          'You have ' + (typeof pendingTransactions !== 'undefined' ? '' : 'unsaved ') +
+          'transactions that haven\'t been saved yet.\n\n' +
+          'Leaving now will discard them. Continue?'
+        );
+        if (!confirmed) return;
+        // User confirmed — discard pending transactions
+        UploadScreen.showState('idle');
       }
+
+      navigateTo(target); // defined in router.js
+      // Initialize screen-specific logic after navigation
+      onScreenActivated(target);
     });
   });
 
@@ -270,6 +286,48 @@ async function initApp() {
 
   console.log('Finance App initialized ✅');
 }
+
+// ─── Global Bottom Sheet Swipe-to-Close (Fix 4) ──────────────────────────────
+// Uses event delegation on document.body to handle ALL bottom sheet panels,
+// including those injected dynamically by upload.js and transactions.js.
+// A downward swipe of 60px+ on any .bottom-sheet-panel or .bottom-sheet-handle
+// closes the sheet by removing .active from the panel and its backdrop.
+
+(function () {
+  var _touchStartY = 0;
+  var _touchPanel  = null;
+
+  document.addEventListener('touchstart', function (e) {
+    var target = e.target;
+    // Walk up to find a bottom-sheet-panel
+    while (target && target !== document.body) {
+      if (target.classList && target.classList.contains('bottom-sheet-panel')) {
+        _touchPanel  = target;
+        _touchStartY = e.touches[0].clientY;
+        return;
+      }
+      target = target.parentElement;
+    }
+    _touchPanel = null;
+  }, { passive: true });
+
+  document.addEventListener('touchend', function (e) {
+    if (!_touchPanel) return;
+    var dy = e.changedTouches[0].clientY - _touchStartY;
+    if (dy > 60) {
+      // Find and deactivate the panel and its backdrop
+      _touchPanel.classList.remove('active');
+      // Backdrop is the previous sibling or has id ending in '-backdrop'
+      var panelId   = _touchPanel.id;
+      var backdropId = panelId ? panelId.replace('-panel', '-backdrop').replace('-sheet', '-sheet-backdrop') : null;
+      if (backdropId) {
+        var backdrop = document.getElementById(backdropId);
+        if (backdrop) backdrop.classList.remove('active');
+      }
+    }
+    _touchPanel = null;
+  }, { passive: true });
+})();
 
 // ─── Bootstrap ───────────────────────────────────────────────────────────────
 

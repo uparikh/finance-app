@@ -21,10 +21,12 @@
   --text-tertiary:  rgba(60,60,67,0.3);
 
   /* ── Accent — iOS 26 electric blue-purple ────────────────────────────────── */
-  --accent:           #5E5CE6;                 /* iOS indigo */
-  --accent-secondary: #BF5AF2;                 /* iOS purple */
-  --accent-light:     rgba(94,92,230,0.12);
-  --accent-glow:      rgba(94,92,230,0.25);
+  --accent:                #5E5CE6;                 /* iOS indigo */
+  --accent-secondary:      #BF5AF2;                 /* iOS purple */
+  --accent-rgb:            94,92,230;               /* for rgba() usage */
+  --accent-secondary-rgb:  191,90,242;              /* for rgba() usage */
+  --accent-light:          rgba(94,92,230,0.12);
+  --accent-glow:           rgba(94,92,230,0.25);
 
   /* ── Semantic ────────────────────────────────────────────────────────────── */
   --success: #34C759;                          /* iOS green */

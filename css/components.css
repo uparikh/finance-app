@@ -53,15 +53,22 @@
    2. Summary Card (Dashboard hero card) — vibrant gradient + glass
    -------------------------------------------------------------------------- */
 .summary-card {
-  background: linear-gradient(135deg, #5E5CE6 0%, #BF5AF2 100%);
+  /* Gradient uses CSS variables so the accent color picker works.
+     Falls back to indigo/purple if --accent-rgb is not set. */
+  background: linear-gradient(
+    135deg,
+    rgba(var(--accent-rgb, 94,92,230), 1) 0%,
+    rgba(var(--accent-secondary-rgb, 191,90,242), 1) 100%
+  );
   border-radius: 24px;
   padding: var(--space-6);
   color: #ffffff;
-  box-shadow: 0 8px 32px rgba(94, 92, 230, 0.35),
+  box-shadow: 0 8px 32px rgba(var(--accent-rgb, 94,92,230), 0.35),
               inset 0 1px 0 rgba(255, 255, 255, 0.3);
   border: none;
   position: relative;
   overflow: hidden;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
 }
 
 /* Decorative background circle */

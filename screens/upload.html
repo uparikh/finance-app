@@ -184,25 +184,11 @@
 
     </div><!-- /review content -->
 
-    <!-- Sticky bottom action bar — sticks to bottom of .screen scroll container -->
-    <div class="sticky-save-bar">
-      <button
-        id="review-cancel-btn"
-        class="btn btn-ghost"
-        style="flex: 1;"
-        aria-label="Cancel and discard parsed transactions"
-      >
-        Cancel
-      </button>
-      <button
-        id="save-btn"
-        class="btn btn-primary"
-        style="flex: 2;"
-        aria-label="Save all transactions"
-      >
-        Save Transactions
-      </button>
-    </div>
+    <!-- Save/cancel buttons are injected as position:fixed by upload.js
+         into document.body so they always sit above the floating dock.
+         These hidden buttons are kept for JS compatibility. -->
+    <button id="review-cancel-btn" style="display:none;" aria-hidden="true">Cancel</button>
+    <button id="save-btn" style="display:none;" aria-hidden="true">Save Transactions</button>
 
   </div><!-- /#upload-review -->
 
