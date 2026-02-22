@@ -441,8 +441,11 @@
           db.createObjectStore('credit_scores', { keyPath: 'monthKey' });
         }
 
-        // Seed defaults inside the upgrade transaction
-        _seedDefaults(event.target.transaction);
+        // Seed defaults ONLY on fresh install (oldVersion === 0)
+        // On upgrades (v1→v2, v2→v3, etc.) the data already exists
+        if (event.oldVersion === 0) {
+          _seedDefaults(event.target.transaction);
+        }
       };
 
       request.onsuccess = function (event) {
