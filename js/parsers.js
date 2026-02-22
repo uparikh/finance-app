@@ -925,10 +925,31 @@ function parseBilt(text, pages) {
     const lines = text.split('\n');
     result.rawLineCount = lines.length;
 
-    // Regex: "01/15/26  AMAZON.COM  $47.99" or "01/20/26  PAYMENT  -$500.00"
-    const txRegex = /^(\d{2}\/\d{2}\/\d{2})\s+(.+?)\s+\$?([-]?\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\s*$/;
+    const statYear  = period.year  || new Date().getFullYear();
+    const statMonth = period.month || new Date().getMonth() + 1;
 
-    const skipPatterns = /^(date|description|amount|balance|transaction|account|summary|total|opening|closing|beginning|ending|statement|period|page|continued|minimum|payment\s+due|credit\s+limit)/i;
+    // ── Actual Bilt Obsidian (Wells Fargo-issued) statement format:
+    //
+    // Trans Date  Post Date  Reference Number  Long Reference  Description  Amount
+    // 12/20   12/20   080001000   8540924PMWGNBXTMM   WAHTA RAMEN FRISCO TX   $33.42
+    // 12/15   12/15   000000083   8574110PE57LDF436   Bill Pay Payment   $1,001.54-
+    //
+    // Key observations:
+    //   - 2 date columns (MM/DD, no year) + reference + long ref + description + amount
+    //   - Payments have TRAILING minus: "$1,001.54-"
+    //   - Purchases have no sign: "$33.42"
+    //   - Foreign transactions have 3 continuation lines (currency info) — skip them
+    //   - Year inferred from statement period
+
+    // Pattern: MM/DD  MM/DD  digits  alphanumeric_ref  DESCRIPTION  $AMOUNT[-]
+    const txRegex = /^(\d{2}\/\d{2})\s+\d{2}\/\d{2}\s+\d{6,}\s+\S+\s+(.+?)\s+\$([\d,]+\.\d{2})(-?)\s*$/;
+
+    // Simpler fallback: MM/DD  MM/DD  ...  DESCRIPTION  $AMOUNT[-]
+    // Matches lines with two MM/DD dates at the start and a dollar amount at the end
+    const txRegexB = /^(\d{2}\/\d{2})\s+\d{2}\/\d{2}\s+.+?\s+(.+?)\s+\$([\d,]+\.\d{2})(-?)\s*$/;
+
+    // Skip boilerplate
+    const skipPatterns = /^(trans\s+date|post\s+date|date|description|amount|balance|transaction\s+summary|account|summary|total|opening|closing|beginning|ending|statement|period|page\s+\d|continued|minimum|payment\s+due|credit\s+limit|fees\s+charged|interest\s+charged|biltprotect|notice|detach|wells\s+fargo|udit|frisco|los\s+angeles|new\s+balance|available|days\s+in|statement\s+closing|\d{4}\s+totals|total\s+fees|total\s+interest|if\s+you|only\s+the|savings|purchase|cash\s+advance|variable|apr|type\s+of)/i;
 
     let inTransactionSection = false;
 
@@ -936,56 +957,62 @@ function parseBilt(text, pages) {
       const line = rawLine.trim();
       if (!line) continue;
 
-      if (/transactions|account\s+activity|transaction\s+detail/i.test(line)) {
+      // Detect transaction section
+      if (/transaction\s+summary/i.test(line)) {
         inTransactionSection = true;
-        console.log('[Parser] Bilt: found transaction section marker');
+        continue;
+      }
+      if (/fees\s+charged|interest\s+charged|biltprotect\s+summary|interest\s+charge\s+calc/i.test(line)) {
+        inTransactionSection = false;
         continue;
       }
 
       if (skipPatterns.test(line)) continue;
 
-      const match = line.match(txRegex);
+      // Skip foreign currency continuation lines (start with "-" and contain currency info)
+      if (/^-\s+(IN\s+\w+|[\d,]+\.\d+\s+X\s+[\d.]+)/.test(line)) continue;
+
+      // Try Pattern A (strict: with reference numbers)
+      let match = line.match(txRegex);
       if (!match) {
-        if (inTransactionSection && line.length > 10 && /\d/.test(line)) {
+        // Try Pattern B (looser)
+        match = line.match(txRegexB);
+      }
+
+      if (!match) {
+        if (inTransactionSection && /^\d{2}\/\d{2}/.test(line)) {
           result.parseErrors.push(`Bilt: unparsed line: ${line}`);
         }
         continue;
       }
 
-      const [, dateStr, desc, amountStr] = match;
+      const [, dateStr, desc, amountStr, trailingMinus] = match;
       const rawAmount = parseFloat(amountStr.replace(/,/g, ''));
-      if (isNaN(rawAmount)) {
-        result.parseErrors.push(`Bilt: invalid amount in: ${line}`);
-        continue;
-      }
+      if (isNaN(rawAmount)) continue;
 
-      const date = parseDate_MMDDYY(dateStr);
-      if (!date) {
-        result.parseErrors.push(`Bilt: invalid date in: ${line}`);
-        continue;
-      }
+      const date = parseDate_MMDD(dateStr, statYear, statMonth);
+      if (!date) continue;
 
-      // Credit card sign flip:
-      //   PDF positive (purchase/charge) → NEGATIVE (expense)
-      //   PDF negative (payment/credit)  → POSITIVE (reduces balance)
-      const storedAmount = -rawAmount;
+      // Sign convention:
+      //   Trailing minus (e.g. "$1,001.54-") = payment/credit → store as POSITIVE (income/transfer)
+      //   No minus (e.g. "$33.42") = purchase → store as NEGATIVE (expense)
+      const isPayment = trailingMinus === '-';
+      const storedAmount = isPayment ? rawAmount : -rawAmount;
 
-      const transaction = buildTransaction({
+      result.transactions.push(buildTransaction({
         date,
         description: desc,
         amount: storedAmount,
         accountId: 'bilt-credit',
         accountType: 'credit',
-      });
-
-      result.transactions.push(transaction);
+      }));
       result.parsedCount++;
     }
 
     if (result.rawLineCount > 0) {
       const dataLines = lines.filter(l => l.trim().length > 5).length;
       result.confidence = dataLines > 0
-        ? Math.min(1, result.parsedCount / Math.max(1, dataLines * 0.3))
+        ? Math.min(1, result.parsedCount / Math.max(1, dataLines * 0.15))
         : 0;
     }
 
