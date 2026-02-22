@@ -756,6 +756,79 @@
     },
 
     /**
+     * Updates the categoryId (and optionally merchantName) on ALL transactions
+     * whose merchantName matches the given name (case-insensitive).
+     * Returns the count of updated transactions.
+     * @param {string} merchantName
+     * @param {string} categoryId
+     * @returns {Promise<number>} count of updated transactions
+     */
+    updateTransactionsByMerchant: async function (merchantName, categoryId) {
+      try {
+        const all = await FinanceDB.getAllTransactions();
+        const lower = merchantName.toLowerCase().trim();
+        const toUpdate = all.filter(function (t) {
+          return (t.merchantName || '').toLowerCase().trim() === lower ||
+                 (t.description  || '').toLowerCase().trim() === lower;
+        });
+
+        if (toUpdate.length === 0) return 0;
+
+        // Update each matching transaction
+        for (const txn of toUpdate) {
+          const updated = Object.assign({}, txn, { categoryId: categoryId, isManuallyEdited: true });
+          await _put('transactions', updated);
+        }
+
+        // Recompute summaries for all affected months
+        const affectedMonths = [...new Set(toUpdate.map(function (t) { return t.monthKey; }).filter(Boolean))];
+        for (const mk of affectedMonths) {
+          await FinanceDB.recomputeMonthlySummary(mk);
+        }
+
+        return toUpdate.length;
+      } catch (err) {
+        console.error('[FinanceDB] updateTransactionsByMerchant failed:', err);
+        throw err;
+      }
+    },
+
+    /**
+     * Saves or updates a user-defined merchant rule.
+     * If a rule for this merchant already exists, updates it.
+     * Otherwise creates a new rule.
+     * @param {string} merchantName  Display name of the merchant
+     * @param {string} categoryId    Category to assign
+     * @returns {Promise<void>}
+     */
+    saveMerchantCategoryRule: async function (merchantName, categoryId) {
+      try {
+        const pattern = merchantName.toLowerCase().trim();
+        if (!pattern) return;
+
+        // Check if a user-defined rule already exists for this pattern
+        const existing = _rulesCache.find(function (r) {
+          return r.pattern === pattern && r.isUserDefined;
+        });
+
+        if (existing) {
+          await FinanceDB.updateMerchantRule(existing.id, { categoryId: categoryId });
+        } else {
+          await FinanceDB.addMerchantRule({
+            pattern:       pattern,
+            categoryId:    categoryId,
+            merchantName:  merchantName,
+            isUserDefined: true,
+            matchCount:    0,
+          });
+        }
+      } catch (err) {
+        console.error('[FinanceDB] saveMerchantCategoryRule failed:', err);
+        throw err;
+      }
+    },
+
+    /**
      * Deletes a transaction by id.
      * @param {number} id
      * @returns {Promise<void>}

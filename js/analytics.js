@@ -24,9 +24,10 @@
   let _activeRange     = 6;
 
   let _trendChart    = null;
-  let _categoryChart = null;
-  let _savingsChart  = null;
-  let _drillChart    = null;   // chart inside the drill-down overlay
+  let _categoryChart    = null;
+  let _savingsChart     = null;
+  let _cumulativeChart  = null;
+  let _drillChart       = null;   // chart inside the drill-down overlay
 
   let _calendarYear  = new Date().getFullYear();
   let _calendarMonth = new Date().getMonth();
@@ -881,6 +882,7 @@
       const filteredTransactions = filterTransactions(_allTransactions, months);
       const catMap               = buildCategoryMap(_allCategories);
 
+      AnalyticsScreen.renderCumulativeSavingsChart(_allSummaries); // always uses ALL summaries for running total
       AnalyticsScreen.renderOverviewCard(filteredSummaries);
       AnalyticsScreen.renderCategoryChart(filteredTransactions, _allCategories, catMap);
       AnalyticsScreen.renderSavingsRateChart(filteredSummaries);
@@ -1310,6 +1312,98 @@
     },
 
     // ── renderTopMerchants ────────────────────────────────────────────────────
+
+    // ── renderCumulativeSavingsChart ──────────────────────────────────────────
+
+    /**
+     * Renders a cumulative net saved line chart using ALL monthly summaries.
+     * Shows the running total of savings from the first month to the most recent.
+     * @param {object[]} summaries  All monthly summaries sorted ascending
+     */
+    renderCumulativeSavingsChart: function (summaries) {
+      _cumulativeChart = destroyChart(_cumulativeChart);
+
+      const container = el('cumulative-chart-container');
+      if (!container) return;
+      container.innerHTML = '<canvas id="cumulative-chart" style="display:block;width:100%;height:180px;"></canvas>';
+      const canvas = el('cumulative-chart');
+
+      if (!summaries || summaries.length < 2) {
+        container.innerHTML = '<p style="text-align:center;color:var(--text-secondary);font-size:13px;padding:40px 0;">Need at least 2 months of data</p>';
+        return;
+      }
+
+      const { gridColor, textColor } = getChartColors();
+
+      // Build cumulative running total
+      let runningTotal = 0;
+      const labels = [];
+      const data   = [];
+      summaries.forEach(function (s) {
+        runningTotal += (s.netSavings || 0);
+        labels.push(monthKeyToShort(s.monthKey));
+        data.push(Math.round(runningTotal * 100) / 100);
+      });
+
+      // Color: green if positive trend, red if negative
+      const lastVal  = data[data.length - 1] || 0;
+      const lineColor = lastVal >= 0 ? '#10B981' : '#EF4444';
+      const fillColor = lastVal >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.08)';
+
+      if (container && container.offsetWidth > 0) {
+        canvas.width  = container.offsetWidth;
+        canvas.height = 180;
+      }
+
+      _cumulativeChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Cumulative Saved',
+            data: data,
+            borderColor: lineColor,
+            backgroundColor: fillColor,
+            fill: true,
+            tension: 0.4,
+            pointRadius: 3,
+            pointHoverRadius: 6,
+            pointBackgroundColor: lineColor,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function (ctx) {
+                  var val = ctx.raw;
+                  return ' ' + (val < 0 ? '−' : '') + formatCurrency(Math.abs(val));
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { color: textColor, maxRotation: 0, maxTicksLimit: 8 },
+            },
+            y: {
+              grid: { color: gridColor },
+              ticks: {
+                color: textColor,
+                callback: function (v) {
+                  return (v < 0 ? '−' : '') + '$' + (Math.abs(v) / 1000).toFixed(0) + 'k';
+                },
+              },
+            },
+          },
+        },
+      });
+      requestAnimationFrame(function () { if (_cumulativeChart) _cumulativeChart.resize(); });
+    },
 
     renderTopMerchants: function (transactions, catMap) {
       const container = el('top-merchants-list');

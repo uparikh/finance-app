@@ -770,11 +770,13 @@
       return;
     }
 
-    // Fetch original to get fallback date
-    let originalDate = '';
+    // Fetch original to get fallback date AND original category (for merchant rule logic)
+    let originalDate     = '';
+    let originalCategory = null;
     try {
       const orig = await FinanceDB.getTransaction(_editingId);
-      originalDate = orig ? (orig.date || '') : '';
+      originalDate     = orig ? (orig.date     || '') : '';
+      originalCategory = orig ? (orig.categoryId || null) : null;
     } catch (e) { /* ignore */ }
 
     const parsedDate   = _parseDateToISO(dateRaw, originalDate);
@@ -815,6 +817,42 @@
     await loadTransactions();
     _renderCategoryChips();
     _populateAccountFilter();
+
+    // ── Merchant rule: remember this category for future imports ──────────
+    // Only act if the user actually changed the category
+    if (merchantName && categoryId && originalCategory !== categoryId) {
+      try {
+        // Save rule for future imports (always)
+        await FinanceDB.saveMerchantCategoryRule(merchantName, categoryId);
+
+        // Count other transactions from this vendor with a different category
+        const allTxns = await FinanceDB.getAllTransactions();
+        const sameVendorDifferentCat = allTxns.filter(function (t) {
+          return (t.merchantName || '').toLowerCase().trim() === merchantName.toLowerCase().trim() &&
+                 t.id !== _editingId &&
+                 t.categoryId !== categoryId;
+        });
+
+        if (sameVendorDifferentCat.length > 0) {
+          const catName = _getCategoryName(categoryId);
+          const confirmed = window.confirm(
+            '📌 Update all "' + merchantName + '" transactions?\n\n' +
+            'Found ' + sameVendorDifferentCat.length + ' other transaction' +
+            (sameVendorDifferentCat.length !== 1 ? 's' : '') +
+            ' from this vendor.\n\n' +
+            'Change all to "' + catName + '"?'
+          );
+          if (confirmed) {
+            await FinanceDB.updateTransactionsByMerchant(merchantName, categoryId);
+            await loadTransactions();
+            _renderCategoryChips();
+            _populateAccountFilter();
+          }
+        }
+      } catch (err) {
+        console.warn('[TransactionsScreen] Merchant rule save failed (non-fatal):', err);
+      }
+    }
   }
 
   // ─── Delete Transaction ──────────────────────────────────────────────────────

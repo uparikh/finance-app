@@ -751,7 +751,7 @@
   /**
    * Saves the edited transaction back to pendingTransactions and re-renders.
    */
-  function saveEdit() {
+  async function saveEdit() {
     if (editingIndex < 0 || editingIndex >= pendingTransactions.length) {
       closeEditSheet();
       return;
@@ -796,6 +796,11 @@
     const storedAmount = isIncome ? Math.abs(amountRaw) : -Math.abs(amountRaw);
     const monthKey = parsedDate ? parsedDate.slice(0, 7) : '';
 
+    // Capture original category BEFORE updating (for merchant rule comparison)
+    const _origCatId = pendingTransactions[editingIndex]
+      ? pendingTransactions[editingIndex].categoryId
+      : null;
+
     // Update the transaction in place
     pendingTransactions[editingIndex] = Object.assign(
       {},
@@ -817,6 +822,53 @@
     // Re-render the list
     _renderFilteredList();
     updateSaveButton();
+
+    // ── Merchant rule: save category for future imports ───────────────────
+    if (merchantName && categoryId && _origCatId !== categoryId) {
+      try {
+        // Save rule for future imports
+        await FinanceDB.saveMerchantCategoryRule(merchantName, categoryId);
+
+        // Also update other pending transactions from the same vendor in this review
+        const sameVendorInReview = pendingTransactions.filter(function (t, i) {
+          return i !== editingIndex &&
+                 (t.merchantName || '').toLowerCase().trim() === merchantName.toLowerCase().trim() &&
+                 t.categoryId !== categoryId;
+        });
+
+        if (sameVendorInReview.length > 0) {
+          const catNameMap = {
+            food: 'Food & Dining', groceries: 'Groceries', transport: 'Transport',
+            shopping: 'Shopping', subscriptions: 'Subscriptions', health: 'Health & Medical',
+            travel: 'Travel', housing: 'Housing & Rent', entertainment: 'Entertainment',
+            utilities: 'Utilities', income: 'Income', transfer: 'Transfer', other: 'Other',
+          };
+          const catName = catNameMap[categoryId] || categoryId;
+          const confirmed = window.confirm(
+            '📌 Update all "' + merchantName + '" in this import?\n\n' +
+            'Found ' + sameVendorInReview.length + ' other transaction' +
+            (sameVendorInReview.length !== 1 ? 's' : '') +
+            ' from this vendor in this statement.\n\n' +
+            'Change all to "' + catName + '"?'
+          );
+          if (confirmed) {
+            pendingTransactions.forEach(function (t, i) {
+              if (i !== editingIndex &&
+                  (t.merchantName || '').toLowerCase().trim() === merchantName.toLowerCase().trim()) {
+                pendingTransactions[i] = Object.assign({}, t, {
+                  categoryId:       categoryId,
+                  isManuallyEdited: true,
+                });
+              }
+            });
+            _renderFilteredList();
+            updateSaveButton();
+          }
+        }
+      } catch (err) {
+        console.warn('[UploadScreen] Merchant rule save failed (non-fatal):', err);
+      }
+    }
   }
 
   // ─── Save All Transactions ───────────────────────────────────────────────────
