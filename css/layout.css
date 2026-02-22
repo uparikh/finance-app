@@ -138,97 +138,121 @@
 }
 
 /* --------------------------------------------------------------------------
-   6. Bottom Navigation Bar — iOS 26 Liquid Glass
-   Fixed to the bottom of the app shell
+   6. Bottom Navigation Bar — iOS 26 Liquid Glass Floating Dock
+   Floating pill/capsule centered above the safe area
    -------------------------------------------------------------------------- */
-.bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 100%;
-  max-width: var(--app-max-width);
-  height: calc(var(--nav-height) + env(safe-area-inset-bottom));
-  padding-bottom: env(safe-area-inset-bottom);
-  /* Liquid glass material */
-  background: rgba(249, 249, 249, 0.85);
-  backdrop-filter: var(--blur-xl);
-  -webkit-backdrop-filter: var(--blur-xl);
-  border-top: 0.5px solid var(--separator);
-  /* No box-shadow — iOS style */
-  box-shadow: none;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-around;
-  z-index: 50;
-  transition: background-color 0.3s var(--ease-out),
-              border-color 0.3s var(--ease-out);
+
+/* Extra bottom padding on screens so content clears the floating dock */
+.screen {
+  padding-bottom: calc(90px + env(safe-area-inset-bottom) + 16px);
 }
 
-/* Dark mode bottom nav */
+.bottom-nav {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+
+  /* Pill width: shrink-wrap the items with padding */
+  width: auto;
+  max-width: calc(var(--app-max-width) - 32px);
+
+  /* Pill shape */
+  border-radius: 28px;
+  padding: 6px 8px;
+
+  /* iOS 26 Liquid Glass */
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: saturate(180%) blur(28px);
+  -webkit-backdrop-filter: saturate(180%) blur(28px);
+
+  /* Specular highlight on top edge */
+  border: 0.5px solid rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    0 2px 8px  rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  z-index: 50;
+
+  transition: background 0.3s ease,
+              border-color 0.3s ease,
+              box-shadow 0.3s ease;
+}
+
+/* Dark mode dock */
 [data-theme="dark"] .bottom-nav {
-  background: rgba(28, 28, 30, 0.85);
+  background: rgba(30, 30, 40, 0.65);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    0 2px 8px  rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 /* --------------------------------------------------------------------------
    7. Bottom Nav Item
-   Each tab: icon on top, label below
+   Each tab: icon on top, label below — compact for the pill dock
    -------------------------------------------------------------------------- */
 .bottom-nav-item {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: var(--space-3) var(--space-2);
+  gap: 3px;
+  padding: 8px 14px;
   cursor: pointer;
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  transition: color var(--duration-fast) var(--ease-out),
-              transform var(--duration-fast) var(--spring);
+  border-radius: 22px;
+  transition: color 0.15s ease,
+              background 0.15s ease,
+              transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   -webkit-tap-highlight-color: transparent;
   user-select: none;
-  min-height: var(--nav-height);
+  min-width: 56px;
   position: relative;
 }
 
-/* Active indicator dot above icon */
-.bottom-nav-item.active::before {
-  content: '';
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background-color: var(--accent);
-}
-
+/* Active tab: frosted pill highlight inside the dock */
 .bottom-nav-item.active {
   color: var(--accent);
+  background: rgba(108, 99, 255, 0.12);
+}
+
+[data-theme="dark"] .bottom-nav-item.active {
+  background: rgba(108, 99, 255, 0.20);
+}
+
+/* Remove the dot indicator — the pill highlight replaces it */
+.bottom-nav-item.active::before {
+  display: none;
 }
 
 .bottom-nav-item:active {
-  transform: scale(0.92);
+  transform: scale(0.88);
 }
 
 .bottom-nav-icon {
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1;
-  transition: transform var(--duration-fast) var(--spring);
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* Active tab: subtle scale up */
+/* Active tab: subtle bounce */
 .bottom-nav-item.active .bottom-nav-icon {
-  transform: scale(1.05);
+  transform: scale(1.08) translateY(-1px);
 }
 
 .bottom-nav-label {
-  font-size: var(--font-xs);
-  font-weight: var(--font-weight-medium);
+  font-size: 10px;
+  font-weight: 600;
   line-height: 1;
   letter-spacing: -0.1px;
   transition: var(--transition-theme);

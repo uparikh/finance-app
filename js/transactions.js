@@ -126,12 +126,15 @@
 
   // ─── Utility: Amount Formatting ──────────────────────────────────────────────
 
-  function _formatAmount(amount) {
+  function _formatAmount(amount, isTransfer) {
     const abs = Math.abs(amount);
     const formatted = abs.toLocaleString('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
+    if (isTransfer) {
+      return { text: '~$' + formatted, color: 'var(--text-tertiary, #9CA3AF)' };
+    }
     if (amount >= 0) {
       return { text: '+$' + formatted, color: 'var(--success)' };
     } else {
@@ -267,24 +270,29 @@
     const strip = el('txn-summary-strip');
     if (!strip) return;
 
-    let income   = 0;
-    let expenses = 0;
+    let income    = 0;
+    let expenses  = 0;
+    let transfers = 0;
 
     _filteredTransactions.forEach(function (t) {
-      if (t.amount > 0) {
+      if (t.categoryId === 'transfer') {
+        transfers += Math.abs(t.amount);
+      } else if (t.amount > 0) {
         income += t.amount;
       } else {
         expenses += Math.abs(t.amount);
       }
     });
 
-    const countEl   = strip.querySelector('[data-summary="count"]');
-    const incomeEl  = strip.querySelector('[data-summary="income"]');
-    const expenseEl = strip.querySelector('[data-summary="expenses"]');
+    const countEl    = strip.querySelector('[data-summary="count"]');
+    const incomeEl   = strip.querySelector('[data-summary="income"]');
+    const expenseEl  = strip.querySelector('[data-summary="expenses"]');
+    const transferEl = strip.querySelector('[data-summary="transfers"]');
 
-    if (countEl)   countEl.textContent   = _filteredTransactions.length;
-    if (incomeEl)  incomeEl.textContent  = _formatCurrency(income);
-    if (expenseEl) expenseEl.textContent = _formatCurrency(expenses);
+    if (countEl)    countEl.textContent    = _filteredTransactions.length;
+    if (incomeEl)   incomeEl.textContent   = _formatCurrency(income);
+    if (expenseEl)  expenseEl.textContent  = _formatCurrency(expenses);
+    if (transferEl) transferEl.textContent = _formatCurrency(transfers);
   }
 
   // ─── Render List ─────────────────────────────────────────────────────────────
@@ -349,31 +357,34 @@
 
       // Transaction rows
       groups[dateKey].forEach(function (txn) {
+        const isTransfer = txn.categoryId === 'transfer';
         const emoji    = _getCategoryEmoji(txn.categoryId);
         const catName  = _getCategoryName(txn.categoryId);
-        const catColor = _getCategoryColor(txn.categoryId);
-        const amtInfo  = _formatAmount(txn.amount);
+        const catColor = isTransfer ? '#9CA3AF' : _getCategoryColor(txn.categoryId);
+        const amtInfo  = _formatAmount(txn.amount, isTransfer);
         const merchant = txn.merchantName || txn.description || 'Unknown';
 
-        // Background color = category color at 15% opacity
-        const bgColor = _hexToRgba(catColor, 0.15);
+        // Background color = category color at 15% opacity (dimmer for transfers)
+        const bgColor = _hexToRgba(catColor, isTransfer ? 0.10 : 0.15);
 
-        const isHighCost = !txn.isIncome && Math.abs(txn.amount) >= 150;
+        const isHighCost = !txn.isIncome && !isTransfer && Math.abs(txn.amount) >= 150;
         const highCostBadge = isHighCost ? '<span class="high-cost-badge">⚠️ High</span>' : '';
 
         const item = document.createElement('div');
-        item.className = 'txn-item' + (isHighCost ? ' high-cost' : '');
+        item.className = 'txn-item' +
+          (isHighCost ? ' high-cost' : '') +
+          (isTransfer ? ' txn-transfer' : '');
         item.setAttribute('data-txn-id', txn.id);
         item.setAttribute('role', 'button');
         item.setAttribute('tabindex', '0');
         item.setAttribute('aria-label', 'Edit ' + merchant);
 
         item.innerHTML =
-          '<div class="txn-emoji-circle" style="background:' + bgColor + ';">' +
+          '<div class="txn-emoji-circle" style="background:' + bgColor + ';' + (isTransfer ? 'opacity:0.7;' : '') + '">' +
             emoji +
           '</div>' +
           '<div class="txn-info">' +
-            '<div class="txn-merchant">' + _esc(merchant) + '</div>' +
+            '<div class="txn-merchant" style="' + (isTransfer ? 'color:var(--text-secondary);' : '') + '">' + _esc(merchant) + '</div>' +
             '<div class="txn-category">' + _esc(catName) + '</div>' +
           '</div>' +
           '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">' +

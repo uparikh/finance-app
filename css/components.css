@@ -395,6 +395,20 @@
 }
 
 /* Amount color helpers */
+.amount-transfer {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.txn-transfer {
+  opacity: 0.65;
+}
+
+.txn-transfer .txn-merchant,
+.txn-transfer .review-txn-merchant {
+  color: var(--text-secondary);
+}
+
 .amount-positive {
   color: var(--success);
 }

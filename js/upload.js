@@ -368,9 +368,12 @@
    * @param {number} amount
    * @returns {{ text: string, className: string }}
    */
-  function formatAmount(amount) {
+  function formatAmount(amount, isTransfer) {
     const abs = Math.abs(amount);
     const formatted = abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (isTransfer) {
+      return { text: '~$' + formatted, className: 'amount-transfer' };
+    }
     if (amount >= 0) {
       return { text: '+$' + formatted, className: 'amount-positive' };
     } else {
@@ -549,25 +552,28 @@
       groups[dateKey].forEach(function (txn) {
         // Find the real index in pendingTransactions for editing
         const realIndex = pendingTransactions.indexOf(txn);
+        const isTransfer = txn.categoryId === 'transfer';
         const isUncategorized = txn.categoryId === 'other' || txn.categoryId === 'uncategorized';
-        const amtInfo = formatAmount(txn.amount);
+        const amtInfo = formatAmount(txn.amount, isTransfer);
         const emoji = getCategoryEmoji(txn.categoryId);
         const catName = getCategoryName(txn.categoryId);
 
-        const isHighCost = !txn.isIncome && Math.abs(txn.amount) >= 150;
+        const isHighCost = !txn.isIncome && !isTransfer && Math.abs(txn.amount) >= 150;
         const highCostBadge = isHighCost ? '<span class="high-cost-badge">⚠️ High</span>' : '';
 
         const item = document.createElement('div');
         item.className = 'review-txn-item' +
           (isUncategorized ? ' uncategorized' : '') +
-          (isHighCost ? ' high-cost' : '');
+          (isHighCost ? ' high-cost' : '') +
+          (isTransfer ? ' txn-transfer' : '');
         item.innerHTML =
           '<div style="width:40px;height:40px;border-radius:10px;background:var(--bg-secondary);' +
-          'display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;">' +
+          'display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;' +
+          (isTransfer ? 'opacity:0.6;' : '') + '">' +
             emoji +
           '</div>' +
           '<div style="flex:1;min-width:0;">' +
-            '<div class="review-txn-merchant">' + _escapeHtml(txn.merchantName || txn.description || 'Unknown') + '</div>' +
+            '<div class="review-txn-merchant"' + (isTransfer ? ' style="color:var(--text-secondary);"' : '') + '>' + _escapeHtml(txn.merchantName || txn.description || 'Unknown') + '</div>' +
             '<div class="review-txn-category">' + catName + '</div>' +
           '</div>' +
           '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">' +
@@ -802,6 +808,63 @@
    */
   async function saveAllTransactions() {
     if (pendingTransactions.length === 0) return;
+
+    // ── Duplicate detection ──────────────────────────────────────────────────
+    // Check if any month+account combination already has data in the DB.
+    // This prevents accidentally importing the same statement twice.
+    try {
+      const monthsWithData = await FinanceDB.getMonthsWithData();
+      const existingMonths = new Set(monthsWithData);
+
+      // Collect unique month+account combos from pending transactions
+      const pendingCombos = new Set();
+      pendingTransactions.forEach(function (t) {
+        if (t.monthKey && t.accountId) {
+          pendingCombos.add(t.monthKey + '|' + t.accountId);
+        }
+      });
+
+      // Check each combo against existing data
+      const duplicates = [];
+      for (const combo of pendingCombos) {
+        const [monthKey, accountId] = combo.split('|');
+        if (existingMonths.has(monthKey)) {
+          // Check if this specific account already has transactions in this month
+          try {
+            const existing = await FinanceDB.getTransactionsByMonth(monthKey);
+            const hasAccount = existing.some(function (t) { return t.accountId === accountId; });
+            if (hasAccount) {
+              duplicates.push({ monthKey: monthKey, accountId: accountId });
+            }
+          } catch (e) { /* ignore */ }
+        }
+      }
+
+      if (duplicates.length > 0) {
+        // Format duplicate info for the warning
+        const dupLabels = duplicates.map(function (d) {
+          try {
+            const [y, m] = d.monthKey.split('-').map(Number);
+            const date = new Date(y, m - 1, 1);
+            const monthLabel = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            return monthLabel;
+          } catch (e) { return d.monthKey; }
+        });
+        const uniqueLabels = [...new Set(dupLabels)];
+        const confirmed = window.confirm(
+          '⚠️ Duplicate Statement Detected\n\n' +
+          'It looks like you\'ve already imported data for: ' + uniqueLabels.join(', ') + '.\n\n' +
+          'Importing again will add duplicate transactions.\n\n' +
+          'Continue anyway?'
+        );
+        if (!confirmed) {
+          return; // User cancelled — don't save
+        }
+      }
+    } catch (err) {
+      console.warn('[UploadScreen] Duplicate check failed (non-fatal):', err);
+      // Continue with save even if duplicate check fails
+    }
 
     const saveBtn = el('save-btn');
     if (saveBtn) {
