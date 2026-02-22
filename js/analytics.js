@@ -153,6 +153,17 @@
 
   // ─── Drill-Down Overlay ──────────────────────────────────────────────────────
 
+  // ─── Drill-Down Gesture State ────────────────────────────────────────────────
+  var _drillGesture = {
+    active:     false,
+    startX:     0,
+    startY:     0,
+    lastX:      0,
+    lastY:      0,
+    startTime:  0,
+    direction:  null, // 'horizontal' | 'vertical' | null
+  };
+
   /**
    * Opens the drill-down overlay with a given title and renders a chart inside it.
    * @param {string} title
@@ -174,17 +185,20 @@
     // Clear content
     content.innerHTML = '';
 
-    // Lock the parent screen's scroll to prevent scroll-through (Fix 11)
+    // Lock the parent screen's scroll to prevent scroll-through
     const parentScreen = el('screen-analytics');
     if (parentScreen) {
       parentScreen._savedScrollTop = parentScreen.scrollTop;
       parentScreen.style.overflow = 'hidden';
     }
 
-    // Show overlay
-    overlay.style.display = 'flex';
+    // Show overlay — start off-screen right, slide in
+    overlay.style.transition = 'none';
+    overlay.style.transform  = 'translateX(100%)';
+    overlay.style.display    = 'flex';
     requestAnimationFrame(function () {
-      overlay.style.transform = 'translateX(0)';
+      overlay.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)';
+      overlay.style.transform  = 'translateX(0)';
     });
 
     // Wire back button (replace to avoid duplicate listeners)
@@ -194,6 +208,75 @@
       newBack.addEventListener('click', closeDrilldown);
     }
 
+    // ── Swipe gesture: follow finger, spring back or dismiss (Fix 8 + B2) ──
+    overlay.ontouchstart = function (e) {
+      _drillGesture.active    = true;
+      _drillGesture.startX    = e.touches[0].clientX;
+      _drillGesture.startY    = e.touches[0].clientY;
+      _drillGesture.lastX     = e.touches[0].clientX;
+      _drillGesture.lastY     = e.touches[0].clientY;
+      _drillGesture.startTime = Date.now();
+      _drillGesture.direction = null;
+      overlay.style.transition = 'none'; // disable transition while dragging
+    };
+
+    overlay.ontouchmove = function (e) {
+      if (!_drillGesture.active) return;
+      var dx = e.touches[0].clientX - _drillGesture.startX;
+      var dy = e.touches[0].clientY - _drillGesture.startY;
+      _drillGesture.lastX = e.touches[0].clientX;
+      _drillGesture.lastY = e.touches[0].clientY;
+
+      // Determine gesture direction on first significant move
+      if (!_drillGesture.direction) {
+        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+          _drillGesture.direction = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
+        }
+        return;
+      }
+
+      if (_drillGesture.direction === 'horizontal' && dx > 0) {
+        // Swipe right → slide overlay right (back gesture)
+        overlay.style.transform = 'translateX(' + dx + 'px)';
+        e.preventDefault();
+      } else if (_drillGesture.direction === 'vertical' && dy > 0) {
+        // Swipe down → slide overlay down
+        overlay.style.transform = 'translateY(' + dy + 'px)';
+        e.preventDefault();
+      }
+    };
+
+    overlay.ontouchend = function (e) {
+      if (!_drillGesture.active) return;
+      _drillGesture.active = false;
+
+      var dx       = _drillGesture.lastX - _drillGesture.startX;
+      var dy       = _drillGesture.lastY - _drillGesture.startY;
+      var elapsed  = Date.now() - _drillGesture.startTime;
+      var vx       = Math.abs(dx) / elapsed; // px/ms
+      var vy       = Math.abs(dy) / elapsed;
+      var dir      = _drillGesture.direction;
+      var w        = overlay.offsetWidth  || window.innerWidth;
+      var h        = overlay.offsetHeight || window.innerHeight;
+
+      // Dismiss if: swiped > 40% of width/height OR fast flick (>0.4 px/ms)
+      var dismissH = dir === 'horizontal' && dx > 0 && (dx > w * 0.4 || vx > 0.4);
+      var dismissV = dir === 'vertical'   && dy > 0 && (dy > h * 0.35 || vy > 0.35);
+
+      overlay.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)';
+
+      if (dismissH) {
+        overlay.style.transform = 'translateX(100%)';
+        _finishCloseDrilldown();
+      } else if (dismissV) {
+        overlay.style.transform = 'translateY(100%)';
+        _finishCloseDrilldown();
+      } else {
+        // Spring back
+        overlay.style.transform = 'translateX(0) translateY(0)';
+      }
+    };
+
     // Give the DOM a frame to paint before rendering the chart
     requestAnimationFrame(function () {
       requestAnimationFrame(function () {
@@ -202,12 +285,12 @@
     });
   }
 
-  function closeDrilldown() {
-    const overlay = el('analytics-drilldown');
-    if (!overlay) return;
-    overlay.style.transform = 'translateX(100%)';
-
-    // Restore parent screen scroll
+  /**
+   * Finishes closing the drill-down after the animation completes.
+   * Restores parent screen scroll immediately (Fix B3).
+   */
+  function _finishCloseDrilldown() {
+    // Restore parent screen scroll IMMEDIATELY (Fix B3 — no frosted texture delay)
     const parentScreen = el('screen-analytics');
     if (parentScreen) {
       parentScreen.style.overflow = '';
@@ -217,9 +300,45 @@
     }
 
     setTimeout(function () {
-      overlay.style.display = 'none';
+      const overlay = el('analytics-drilldown');
+      if (overlay) {
+        overlay.style.display    = 'none';
+        overlay.style.transform  = 'translateX(100%)';
+        overlay.style.transition = 'none';
+        overlay.ontouchstart = null;
+        overlay.ontouchmove  = null;
+        overlay.ontouchend   = null;
+      }
       _drillChart = destroyChart(_drillChart);
-    }, 300);
+    }, 320);
+  }
+
+  function closeDrilldown() {
+    const overlay = el('analytics-drilldown');
+    if (!overlay) return;
+    overlay.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)';
+    overlay.style.transform  = 'translateX(100%)';
+    _finishCloseDrilldown();
+  }
+
+  /**
+   * Closes the drill-down instantly (no animation) — used when switching tabs (Fix B1).
+   */
+  function closeDrilldownInstant() {
+    const overlay = el('analytics-drilldown');
+    if (!overlay) return;
+    overlay.style.transition = 'none';
+    overlay.style.transform  = 'translateX(100%)';
+    overlay.style.display    = 'none';
+    overlay.ontouchstart = null;
+    overlay.ontouchmove  = null;
+    overlay.ontouchend   = null;
+
+    const parentScreen = el('screen-analytics');
+    if (parentScreen) {
+      parentScreen.style.overflow = '';
+    }
+    _drillChart = destroyChart(_drillChart);
   }
 
   // ─── Drill-Down Chart Builders ───────────────────────────────────────────────
@@ -376,12 +495,14 @@
   }
 
   /**
-   * Renders a scrollable bar chart in the drill-down panel.
+   * Renders a scrollable bar chart with a sticky y-axis (Fix 6).
+   * Layout: [sticky y-axis canvas | scrollable bars canvas]
    * @param {HTMLElement} container
    * @param {object} opts  { getData: fn(summaries) → {labels, values, colors}, yFormat, barColor }
    */
   function renderDrillBarChart(container, opts) {
     const { gridColor, textColor } = getChartColors();
+    const Y_AXIS_WIDTH = 52; // px reserved for the sticky y-axis
 
     // Time range selector
     const rangeBar = document.createElement('div');
@@ -396,16 +517,28 @@
     `;
     container.appendChild(rangeBar);
 
-    // Scrollable canvas wrapper
+    // Outer wrapper: flex row — sticky y-axis on left, scrollable chart on right
+    const outerWrapper = document.createElement('div');
+    outerWrapper.style.cssText = 'display:flex;align-items:stretch;height:260px;';
+
+    // Sticky y-axis canvas (fixed width, not scrollable)
+    const yAxisCanvas = document.createElement('canvas');
+    yAxisCanvas.width  = Y_AXIS_WIDTH;
+    yAxisCanvas.height = 260;
+    yAxisCanvas.style.cssText = 'flex-shrink:0;width:' + Y_AXIS_WIDTH + 'px;height:260px;display:block;';
+    outerWrapper.appendChild(yAxisCanvas);
+
+    // Scrollable bars area
     const scrollWrapper = document.createElement('div');
-    scrollWrapper.style.cssText = 'overflow-x:auto;-webkit-overflow-scrolling:touch;';
+    scrollWrapper.style.cssText = 'flex:1;overflow-x:auto;-webkit-overflow-scrolling:touch;';
     const innerWrapper = document.createElement('div');
     innerWrapper.style.cssText = 'position:relative;height:260px;min-width:100%;';
     const canvas = document.createElement('canvas');
     canvas.style.cssText = 'display:block;height:260px;';
     innerWrapper.appendChild(canvas);
     scrollWrapper.appendChild(innerWrapper);
-    container.appendChild(scrollWrapper);
+    outerWrapper.appendChild(scrollWrapper);
+    container.appendChild(outerWrapper);
 
     // Tooltip
     const tooltip = document.createElement('div');
@@ -423,15 +556,41 @@
     tooltip.innerHTML = '<span style="color:var(--text-secondary);">Tap a bar to see details</span>';
     container.appendChild(tooltip);
 
+    // Helper: draw y-axis labels on the sticky canvas
+    function drawYAxis(minVal, maxVal) {
+      const ctx = yAxisCanvas.getContext('2d');
+      ctx.clearRect(0, 0, Y_AXIS_WIDTH, 260);
+      ctx.fillStyle = getChartColors().textColor;
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'right';
+
+      const steps = 5;
+      const chartTop    = 10;
+      const chartBottom = 240;
+      const chartH      = chartBottom - chartTop;
+
+      for (var i = 0; i <= steps; i++) {
+        var val = minVal + (maxVal - minVal) * (i / steps);
+        var y   = chartBottom - (chartH * i / steps);
+        var label = opts.yFormat ? opts.yFormat(Math.round(val)) : ('$' + (Math.abs(val) >= 1000 ? (val / 1000).toFixed(0) + 'k' : Math.round(val)));
+        ctx.fillText(label, Y_AXIS_WIDTH - 4, y + 3);
+      }
+    }
+
     function buildChart(range) {
       _drillChart = destroyChart(_drillChart);
 
       const filtered = filterSummaries(_allSummaries, range);
       const { labels, values, colors } = opts.getData(filtered);
 
+      // Compute min/max for y-axis
+      const minVal = Math.min(0, Math.min.apply(null, values));
+      const maxVal = Math.max.apply(null, values.concat([0]));
+
       // Make chart wide enough to scroll if many bars
-      const barWidth = Math.max(48, Math.floor((window.innerWidth - 32) / Math.max(labels.length, 1)));
-      const chartWidth = Math.max(window.innerWidth - 32, labels.length * barWidth);
+      const availWidth = (window.innerWidth - Y_AXIS_WIDTH - 32);
+      const barWidth   = Math.max(48, Math.floor(availWidth / Math.max(labels.length, 1)));
+      const chartWidth = Math.max(availWidth, labels.length * barWidth);
       canvas.width  = chartWidth;
       canvas.height = 260;
       innerWrapper.style.width = chartWidth + 'px';
@@ -460,12 +619,11 @@
               ticks: { color: textColor, maxRotation: 0 },
             },
             y: {
+              min: minVal,
+              max: maxVal,
               grid: { color: gridColor },
               ticks: {
-                color: textColor,
-                callback: function (v) {
-                  return opts.yFormat ? opts.yFormat(v) : ('$' + (v / 1000).toFixed(0) + 'k');
-                },
+                display: false, // hidden — drawn on sticky y-axis canvas instead
               },
             },
           },
@@ -479,6 +637,12 @@
                 </div>
               `;
             }
+          },
+          animation: {
+            onComplete: function () {
+              // Draw sticky y-axis after chart renders
+              drawYAxis(minVal, maxVal);
+            },
           },
         },
       });
@@ -503,6 +667,9 @@
     // ── init ──────────────────────────────────────────────────────────────────
 
     init: async function () {
+      // Fix B1: If returning to analytics while drill-down is open, close it instantly
+      closeDrilldownInstant();
+
       const myGeneration = ++_generation;
 
       try {
