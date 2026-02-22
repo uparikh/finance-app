@@ -497,8 +497,11 @@
       // Compute all values for y-axis range
       var allVals = [];
       datasets.forEach(function (ds) { allVals = allVals.concat(ds.data || []); });
-      var minVal = Math.min(0, Math.min.apply(null, allVals));
-      var maxVal = Math.max.apply(null, allVals.concat([0]));
+      var _rawMin = Math.min.apply(null, allVals);
+      var _rawMax = Math.max.apply(null, allVals);
+      var _pad    = Math.max(Math.abs(_rawMax - _rawMin) * 0.12, 1);
+      var minVal  = _rawMin - _pad;
+      var maxVal  = _rawMax + _pad;
 
       // Chart width: at least 6 points visible, scroll for more
       var availWidth = scrollWrapper.offsetWidth || (window.innerWidth - Y_AXIS_WIDTH - 32);
@@ -550,7 +553,11 @@
               const idx   = elements[0].index;
               const items = _drillChart.data.datasets.map(function (ds) {
                 const color = ds.borderColor || '#6C63FF';
-                const val   = opts.yFormat ? opts.yFormat(ds.data[idx]) : formatCurrencyFull(ds.data[idx]);
+                // Use signed format so negative net savings show correctly
+                const rawVal = ds.data[idx];
+                const val    = opts.yFormat
+                  ? opts.yFormat(rawVal)
+                  : ((rawVal < 0 ? '−' : '') + formatCurrencyFull(rawVal));
                 return '<div style="display:flex;align-items:center;gap:6px;">' +
                   '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + color + ';flex-shrink:0;"></span>' +
                   '<strong>' + ds.label + ':</strong>&nbsp;' + val + '</div>';
@@ -671,9 +678,12 @@
       const data = opts.getData(filtered);
       const { labels, values, colors } = data;
 
-      // Compute min/max for y-axis
-      const minVal = Math.min(0, Math.min.apply(null, values));
-      const maxVal = Math.max.apply(null, values.concat([0]));
+      // Compute min/max for y-axis with 12% padding so points aren't clipped
+      var _bRawMin = Math.min.apply(null, values);
+      var _bRawMax = Math.max.apply(null, values);
+      var _bPad    = Math.max(Math.abs(_bRawMax - _bRawMin) * 0.12, 1);
+      const minVal = _bRawMin - _bPad;
+      const maxVal = _bRawMax + _bPad;
 
       // Make chart wide enough to scroll if many bars
       const availWidth = (window.innerWidth - Y_AXIS_WIDTH - 32);
@@ -694,12 +704,12 @@
       (colors || []).forEach(function (c, i) {
         var isOOS = realRates && cap && Math.abs(realRates[i]) > cap;
         if (isOOS) {
-          // 50% transparent fill + hatched overlay drawn in onComplete
+          // 25% opacity fill — clearly lighter than solid bars
           var baseColor = getSavingsRateColor(realRates[i]);
-          bgColors.push(baseColor.replace(')', ',0.5)').replace('rgb(', 'rgba('));
+          bgColors.push(baseColor.replace(')', ',0.25)').replace('rgb(', 'rgba('));
           borderColors.push(baseColor);
           borderWidths.push(1.5);
-          borderDashes.push([4, 3]); // used as OOS marker
+          borderDashes.push([4, 3]); // used as OOS marker (no hatch drawn)
         } else {
           bgColors.push(c || opts.barColor || '#6C63FF');
           borderColors.push('transparent');
@@ -762,41 +772,7 @@
           animation: {
             onComplete: function () {
               drawYAxis(minVal, maxVal);
-              // Draw hatched fill over out-of-scale bars
-              if (borderDashes.some(function (d) { return d.length > 0; })) {
-                var ctx2 = canvas.getContext('2d');
-                var meta = _drillChart.getDatasetMeta(0);
-                meta.data.forEach(function (bar, i) {
-                  if (!borderDashes[i] || borderDashes[i].length === 0) return;
-                  var props = bar.getProps(['x', 'y', 'base', 'width'], true);
-                  var bx = props.x - props.width / 2;
-                  var by = Math.min(props.y, props.base);
-                  var bw = props.width;
-                  var bh = Math.abs(props.base - props.y);
-                  if (bw <= 0 || bh <= 0) return;
-
-                  ctx2.save();
-                  // Clip to bar bounds
-                  ctx2.beginPath();
-                  ctx2.rect(bx, by, bw, bh);
-                  ctx2.clip();
-
-                  // Draw diagonal hatch lines (45°, spacing 6px)
-                  ctx2.strokeStyle = borderColors[i] || '#10B981';
-                  ctx2.lineWidth   = 1.5;
-                  ctx2.globalAlpha = 0.6;
-                  ctx2.setLineDash([]);
-                  var spacing = 7;
-                  var total   = bw + bh;
-                  for (var d = -bh; d < bw; d += spacing) {
-                    ctx2.beginPath();
-                    ctx2.moveTo(bx + d, by);
-                    ctx2.lineTo(bx + d + bh, by + bh);
-                    ctx2.stroke();
-                  }
-                  ctx2.restore();
-                });
-              }
+              // No additional drawing needed — opacity difference is sufficient
             },
           },
         },
