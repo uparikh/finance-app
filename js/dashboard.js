@@ -29,6 +29,9 @@
   /** @type {Chart|null} Chart.js bar chart instance */
   let _trendChart = null;
 
+  /** @type {Chart|null} Cumulative net saved line chart */
+  let _cumulativeChart = null;
+
   /** @type {boolean} Prevents concurrent loadMonth calls */
   let _loading = false;
 
@@ -233,6 +236,13 @@
         const allSummaries = await FinanceDB.getAllMonthlySummaries();
         const last6 = allSummaries.slice(-6);
         DashboardScreen.renderTrendChart(last6);
+
+        // Cumulative net saved chart: show all months, limit x-axis to 12 visible
+        if (allSummaries.length >= 2) {
+          DashboardScreen.renderCumulativeChart(allSummaries);
+          const cumulCard = el('cumulative-card');
+          if (cumulCard) cumulCard.style.display = '';
+        }
 
         // Account balances
         DashboardScreen.renderAccountBalances();
@@ -531,6 +541,132 @@
                 }
               }
             }
+          },
+        },
+      });
+    },
+
+    // ── renderCumulativeChart ─────────────────────────────────────────────────
+
+    /**
+     * Renders a scrollable cumulative net saved line chart on the dashboard.
+     * Shows all months; limits visible window to 12 months; no dots; smooth line.
+     * @param {object[]} allSummaries  All monthly summaries sorted ascending
+     */
+    renderCumulativeChart: function (allSummaries) {
+      if (_cumulativeChart) {
+        _cumulativeChart.destroy();
+        _cumulativeChart = null;
+      }
+
+      const canvas     = el('dash-cumulative-chart');
+      const innerEl    = el('dash-cumulative-inner');
+      const yAxisCanvas = el('dash-cumulative-yaxis');
+      if (!canvas || !innerEl || !yAxisCanvas) return;
+
+      if (!allSummaries || allSummaries.length < 2) return;
+
+      const { gridColor, textColor } = getChartColors();
+      const Y_AXIS_W = 48;
+      const PT_WIDTH = 56; // px per data point
+
+      // Build cumulative running total
+      let running = 0;
+      const labels = [];
+      const data   = [];
+      allSummaries.forEach(function (s) {
+        running += (s.netSavings || 0);
+        labels.push(monthKeyToShort(s.monthKey));
+        data.push(Math.round(running * 100) / 100);
+      });
+
+      const lastVal   = data[data.length - 1] || 0;
+      const lineColor = lastVal >= 0 ? '#10B981' : '#EF4444';
+      const fillColor = lastVal >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.08)';
+
+      // Y-axis range with 12% padding
+      const rawMin = Math.min.apply(null, data);
+      const rawMax = Math.max.apply(null, data);
+      const pad    = Math.max(Math.abs(rawMax - rawMin) * 0.12, 1);
+      const minVal = rawMin - pad;
+      const maxVal = rawMax + pad;
+
+      // Chart width: at least 12 points visible, scroll for more
+      const availW    = (innerEl.parentElement ? innerEl.parentElement.offsetWidth : 0) || (window.innerWidth - Y_AXIS_W - 32);
+      const ptW       = Math.max(PT_WIDTH, Math.floor(availW / Math.min(12, labels.length)));
+      const chartW    = Math.max(availW, labels.length * ptW);
+      canvas.width    = chartW;
+      canvas.height   = 160;
+      innerEl.style.width = chartW + 'px';
+
+      // Scroll to most recent (rightmost)
+      requestAnimationFrame(function () {
+        var sw = innerEl.parentElement;
+        if (sw) sw.scrollLeft = sw.scrollWidth;
+      });
+
+      // Draw sticky y-axis
+      function drawYAxis() {
+        var ctx = yAxisCanvas.getContext('2d');
+        ctx.clearRect(0, 0, Y_AXIS_W, 160);
+        ctx.fillStyle = textColor;
+        ctx.font = '10px -apple-system, sans-serif';
+        ctx.textAlign = 'right';
+        var steps = 4;
+        var top = 10, bottom = 148, h = bottom - top;
+        for (var i = 0; i <= steps; i++) {
+          var val = minVal + (maxVal - minVal) * (i / steps);
+          var y   = bottom - (h * i / steps);
+          var lbl = (val < 0 ? '−' : '') + '$' + (Math.abs(val) >= 1000 ? (Math.abs(val) / 1000).toFixed(0) + 'k' : Math.round(Math.abs(val)));
+          ctx.fillText(lbl, Y_AXIS_W - 4, y + 3);
+        }
+      }
+
+      _cumulativeChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Cumulative Saved',
+            data: data,
+            borderColor: lineColor,
+            backgroundColor: fillColor,
+            fill: true,
+            tension: 0.45,
+            pointRadius: 0,        // no dots
+            pointHoverRadius: 5,
+            borderWidth: 2.5,
+          }],
+        },
+        options: {
+          responsive: false,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function (ctx) {
+                  var v = ctx.raw;
+                  return ' ' + (v < 0 ? '−' : '') + formatCurrency(Math.abs(v));
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { color: textColor, maxRotation: 0, maxTicksLimit: 12 },
+            },
+            y: {
+              min: minVal,
+              max: maxVal,
+              grid: { color: gridColor },
+              ticks: { display: false },
+            },
+          },
+          animation: {
+            onComplete: function () { drawYAxis(); },
           },
         },
       });

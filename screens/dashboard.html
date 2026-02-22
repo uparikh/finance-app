@@ -151,7 +151,24 @@
         </div>
       </div>
 
-      <!-- 5. Recent Transactions -->
+      <!-- 5. Cumulative Net Saved -->
+      <div class="chart-card" id="cumulative-card" style="display:none;">
+        <div class="chart-card-title">
+          <span>Cumulative Net Saved</span>
+          <span style="font-size:12px;color:var(--text-secondary);">Running total</span>
+        </div>
+        <!-- Scrollable line chart: y-axis fixed, bars scroll -->
+        <div style="display:flex;align-items:stretch;height:160px;">
+          <canvas id="dash-cumulative-yaxis" style="flex-shrink:0;width:48px;height:160px;display:block;"></canvas>
+          <div style="flex:1;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+            <div id="dash-cumulative-inner" style="position:relative;height:160px;min-width:100%;">
+              <canvas id="dash-cumulative-chart" style="display:block;height:160px;"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6. Recent Transactions -->
       <div class="chart-card">
         <div class="chart-card-title">
           <span>Recent Transactions</span>

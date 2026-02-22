@@ -8,7 +8,7 @@
  *    These rarely change; serve fast from cache.
  */
 
-const CACHE_NAME = 'finance-app-v29';
+const CACHE_NAME = 'finance-app-v30';
 
 // Base path — empty string when served from root, '/repo-name' on GitHub Pages
 const BASE = '/finance-app';
@@ -49,7 +49,7 @@ const CDN_RESOURCES = [
 
 // ─── Install ──────────────────────────────────────────────────────────────────
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v29...');
+  console.log('[SW] Installing v30...');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {

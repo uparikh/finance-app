@@ -1067,7 +1067,7 @@ function parseDiscover(text, pages) {
     const txRegexB = /^(\d{2}\/\d{2})\s+(.+?)\s+([-]?\$[\d,]+\.\d{2})\s*$/;
 
     // Skip header/summary/boilerplate lines
-    const skipPatterns = /^(trans\.?|date|description|amount|merchant|category|payments\s+and\s+credits|purchases|fees\s+and\s+interest|total\s+fees|total\s+interest|2025\s+totals|year-to-date|interest\s+charge|annual\s+percentage|30\s+days|promo|type\s+of|purchases\s+\d|cash\s+advances|variable|previous\s+balance|new\s+balance|minimum|payment\s+due|cashback|rewards|earned|redeemed|see\s+details|open\s+to\s+close|page\s+\d|discover\.com|dial\s+711|po\s+box|carol\s+stream|hearing|mkq|26s|dit)/i;
+    const skipPatterns = /^(trans\.?|date|description|amount|merchant|category|payments\s+and\s+credits|purchases|fees\s+and\s+interest|total\s+fees|total\s+interest|\d{4}\s+totals|year-to-date|interest\s+charge|annual\s+percentage|30\s+days|promo|type\s+of|purchases\s+\d|cash\s+advances|variable|previous\s+balance|new\s+balance|minimum|payment\s+due|cashback|rewards|earned|redeemed|see\s+details|open\s+to\s+close|page\s+\d|discover\.com|dial\s+711|po\s+box|carol\s+stream|hearing|mkq|26s|dit|apple\s+pay|continued\s+on|transactions\s+continued|fico|cardmember|udit\s+parikh|frisco|charlotte)/i;
 
     let currentSection = 'purchases';
     let inTransactionSection = false;
@@ -1126,10 +1126,18 @@ function parseDiscover(text, pages) {
         const date = parseDate_MMDD(dateStr, statYear, statMonth);
         if (!date) continue;
 
-        // Negative in PDF = payment/credit → store as positive (income)
-        // Positive in PDF = purchase → store as negative (expense)
-        const storedAmount = rawAmount < 0 ? -rawAmount : -rawAmount;
-        // Simplified: flip sign for credit card (payment negative→positive, purchase positive→negative)
+        // Credit card sign convention:
+        //   Negative in PDF (e.g. -$60.44) = payment/credit → store as POSITIVE (income)
+        //   Positive in PDF (e.g. $2.48)   = purchase       → store as NEGATIVE (expense)
+        // currentSection helps disambiguate when sign is ambiguous
+        let storedAmount;
+        if (currentSection === 'payments') {
+          // In payments section: negative = payment (flip to positive), positive = fee/charge (keep negative)
+          storedAmount = rawAmount < 0 ? -rawAmount : -rawAmount;
+        } else {
+          // In purchases section: always negative (expense), regardless of sign in PDF
+          storedAmount = -Math.abs(rawAmount);
+        }
 
         result.transactions.push(buildTransaction({
           date, description: desc, amount: storedAmount,
