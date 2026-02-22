@@ -357,9 +357,15 @@
     ['payment thank',      'transfer', 'Payment'],
     ['autopay',            'transfer', 'Autopay'],
     ['online payment',     'transfer', 'Online Payment'],
+    ['online ach',         'transfer', 'Online Payment'],
+    ['ach payment',        'transfer', 'ACH Payment'],
+    ['ach credit',         'transfer', 'ACH Transfer'],
     ['mobile payment',     'transfer', 'Mobile Payment'],
     ['bill payment',       'transfer', 'Bill Payment'],
     ['credit card payment','transfer', 'Credit Card Payment'],
+    ['directpay',          'transfer', 'Direct Pay'],
+    ['direct pay',         'transfer', 'Direct Pay'],
+    ['biltprotect',        'transfer', 'Bilt Protect'],
   ];
 
   // ─── Core DB Helper ─────────────────────────────────────────────────────────
@@ -1108,16 +1114,24 @@
 
         txns.forEach(function (t) {
           const amt = t.amount || 0;
+          const catId = t.categoryId || '';
 
-          if (amt > 0) {
-            totalIncome += amt;
-          } else {
-            totalExpenses += Math.abs(amt);
+          // Exclude transfers from income/expense totals.
+          // Transfers are credit card payments, account-to-account moves, etc.
+          // They are not real income or spending — just money moving between accounts.
+          const isTransfer = catId === 'transfer';
+
+          if (!isTransfer) {
+            if (amt > 0) {
+              totalIncome += amt;
+            } else {
+              totalExpenses += Math.abs(amt);
+            }
           }
 
-          // Category breakdown (absolute amounts)
-          if (t.categoryId) {
-            categoryBreakdown[t.categoryId] = (categoryBreakdown[t.categoryId] || 0) + Math.abs(amt);
+          // Category breakdown (absolute amounts) — include transfers for reference
+          if (catId) {
+            categoryBreakdown[catId] = (categoryBreakdown[catId] || 0) + Math.abs(amt);
           }
 
           // Account breakdown (absolute amounts)

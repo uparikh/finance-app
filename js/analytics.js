@@ -357,7 +357,6 @@
       console.log('[Analytics] setTimeRange', months, 'summaries:', filteredSummaries.length, 'transactions:', filteredTransactions.length);
 
       AnalyticsScreen.renderOverviewCard(filteredSummaries);
-      AnalyticsScreen.renderTrendChart(filteredSummaries);
       AnalyticsScreen.renderCategoryChart(filteredTransactions, _allCategories, catMap);
       AnalyticsScreen.renderSavingsRateChart(filteredSummaries);
       AnalyticsScreen.renderTopMerchants(filteredTransactions, catMap);

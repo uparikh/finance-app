@@ -8,7 +8,7 @@
  *    These rarely change; serve fast from cache.
  */
 
-const CACHE_NAME = 'finance-app-v11';
+const CACHE_NAME = 'finance-app-v13';
 
 // ─── App Shell — all local files to cache ─────────────────────────────────────
 const APP_SHELL = [
@@ -18,6 +18,7 @@ const APP_SHELL = [
   '/css/base.css',
   '/css/components.css',
   '/css/layout.css',
+  '/js/chart.min.js',
   '/js/db.js',
   '/js/parsers.js',
   '/js/router.js',
