@@ -49,9 +49,6 @@
   <!-- ── Chart.js — local copy for reliable PWA offline support ── -->
   <script src="js/chart.min.js"></script>
 
-  <!-- ── PDF.js — loaded in <head> so parsers.js can reference pdfjsLib ── -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-
   <!--
     ANTI-FLASH: Apply saved theme before first paint.
     This tiny inline script runs synchronously so the user never sees
@@ -193,6 +190,11 @@
        Load order matters: app.js calls functions defined in router.js
        and theme.js, so those must be parsed first.
        ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── PDF.js — moved here from <head> so it doesn't block first paint.
+       parsers.js only uses pdfjsLib when a PDF is uploaded, not at startup,
+       so loading it at end-of-body is safe and keeps the splash screen fast. ── -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous"></script>
+
   <!-- Script loading order is intentional — do not reorder.
        Each file depends on globals defined by the files above it. -->
   <script src="js/db.js"></script>
