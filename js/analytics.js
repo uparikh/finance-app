@@ -211,7 +211,9 @@
     }
 
     // ── Swipe gesture: follow finger, spring back or dismiss (Fix 8 + B2) ──
-    overlay.ontouchstart = function (e) {
+    // Use addEventListener with passive:false so preventDefault() works on iOS
+
+    function _onTouchStart(e) {
       _drillGesture.active    = true;
       _drillGesture.startX    = e.touches[0].clientX;
       _drillGesture.startY    = e.touches[0].clientY;
@@ -219,17 +221,16 @@
       _drillGesture.lastY     = e.touches[0].clientY;
       _drillGesture.startTime = Date.now();
       _drillGesture.direction = null;
-      overlay.style.transition = 'none'; // disable transition while dragging
-    };
+      overlay.style.transition = 'none';
+    }
 
-    overlay.ontouchmove = function (e) {
+    function _onTouchMove(e) {
       if (!_drillGesture.active) return;
       var dx = e.touches[0].clientX - _drillGesture.startX;
       var dy = e.touches[0].clientY - _drillGesture.startY;
       _drillGesture.lastX = e.touches[0].clientX;
       _drillGesture.lastY = e.touches[0].clientY;
 
-      // Determine gesture direction on first significant move
       if (!_drillGesture.direction) {
         if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
           _drillGesture.direction = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical';
@@ -237,47 +238,62 @@
         return;
       }
 
+      var w = overlay.offsetWidth  || window.innerWidth;
+      var h = overlay.offsetHeight || window.innerHeight;
+
       if (_drillGesture.direction === 'horizontal' && dx > 0) {
-        // Swipe right → slide overlay right (back gesture)
         overlay.style.transform = 'translateX(' + dx + 'px)';
+        // Fade opacity proportionally to swipe distance
+        overlay.style.opacity = String(Math.max(0.3, 1 - dx / w));
         e.preventDefault();
       } else if (_drillGesture.direction === 'vertical' && dy > 0) {
-        // Swipe down → slide overlay down
         overlay.style.transform = 'translateY(' + dy + 'px)';
+        overlay.style.opacity = String(Math.max(0.3, 1 - dy / h));
         e.preventDefault();
       }
-    };
+    }
 
-    overlay.ontouchend = function (e) {
+    function _onTouchEnd(e) {
       if (!_drillGesture.active) return;
       _drillGesture.active = false;
 
-      var dx       = _drillGesture.lastX - _drillGesture.startX;
-      var dy       = _drillGesture.lastY - _drillGesture.startY;
-      var elapsed  = Date.now() - _drillGesture.startTime;
-      var vx       = Math.abs(dx) / elapsed; // px/ms
-      var vy       = Math.abs(dy) / elapsed;
-      var dir      = _drillGesture.direction;
-      var w        = overlay.offsetWidth  || window.innerWidth;
-      var h        = overlay.offsetHeight || window.innerHeight;
+      var dx      = _drillGesture.lastX - _drillGesture.startX;
+      var dy      = _drillGesture.lastY - _drillGesture.startY;
+      var elapsed = Date.now() - _drillGesture.startTime;
+      var vx      = Math.abs(dx) / elapsed;
+      var vy      = Math.abs(dy) / elapsed;
+      var dir     = _drillGesture.direction;
+      var w       = overlay.offsetWidth  || window.innerWidth;
+      var h       = overlay.offsetHeight || window.innerHeight;
 
-      // Dismiss if: swiped > 40% of width/height OR fast flick (>0.4 px/ms)
       var dismissH = dir === 'horizontal' && dx > 0 && (dx > w * 0.4 || vx > 0.4);
       var dismissV = dir === 'vertical'   && dy > 0 && (dy > h * 0.35 || vy > 0.35);
 
-      overlay.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)';
+      overlay.style.transition = 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease';
 
       if (dismissH) {
         overlay.style.transform = 'translateX(100%)';
+        overlay.style.opacity   = '0';
         _finishCloseDrilldown();
       } else if (dismissV) {
         overlay.style.transform = 'translateY(100%)';
+        overlay.style.opacity   = '0';
         _finishCloseDrilldown();
       } else {
-        // Spring back
+        // Spring back to full position
         overlay.style.transform = 'translateX(0) translateY(0)';
+        overlay.style.opacity   = '1';
       }
-    };
+    }
+
+    // Store refs so we can remove them in closeDrilldownInstant
+    overlay._touchStart = _onTouchStart;
+    overlay._touchMove  = _onTouchMove;
+    overlay._touchEnd   = _onTouchEnd;
+
+    overlay.addEventListener('touchstart', _onTouchStart, { passive: true });
+    overlay.addEventListener('touchmove',  _onTouchMove,  { passive: false }); // passive:false needed for preventDefault
+    overlay.addEventListener('touchend',   _onTouchEnd,   { passive: true });
 
     // Give the DOM a frame to paint before rendering the chart
     requestAnimationFrame(function () {
@@ -291,10 +307,20 @@
    * Finishes closing the drill-down after the animation completes.
    * Restores parent screen scroll immediately (Fix B3).
    */
+  function _removeDrillGestureListeners(overlay) {
+    if (!overlay) return;
+    if (overlay._touchStart) overlay.removeEventListener('touchstart', overlay._touchStart);
+    if (overlay._touchMove)  overlay.removeEventListener('touchmove',  overlay._touchMove);
+    if (overlay._touchEnd)   overlay.removeEventListener('touchend',   overlay._touchEnd);
+    overlay._touchStart = null;
+    overlay._touchMove  = null;
+    overlay._touchEnd   = null;
+  }
+
   function _finishCloseDrilldown() {
     const overlay = el('analytics-drilldown');
 
-    // Restore parent screen scroll IMMEDIATELY — this removes the frosted effect (Fix 1 + B3)
+    // Restore parent screen scroll IMMEDIATELY — removes frosted effect
     const parentScreen = el('screen-analytics');
     if (parentScreen) {
       parentScreen.style.overflow = '';
@@ -303,21 +329,15 @@
       }
     }
 
-    // Fade out opacity immediately so the frosted backdrop disappears right away
-    if (overlay) {
-      overlay.style.opacity = '0';
-    }
-
-    // Hide and clean up after animation completes
+    // Opacity already set to 0 by the caller (swipe or closeDrilldown)
+    // Hide and clean up after animation
     setTimeout(function () {
       if (overlay) {
         overlay.style.display    = 'none';
         overlay.style.transform  = 'translateX(100%)';
         overlay.style.opacity    = '1'; // reset for next open
         overlay.style.transition = 'none';
-        overlay.ontouchstart = null;
-        overlay.ontouchmove  = null;
-        overlay.ontouchend   = null;
+        _removeDrillGestureListeners(overlay);
       }
       _drillChart = destroyChart(_drillChart);
     }, 320);
@@ -326,8 +346,9 @@
   function closeDrilldown() {
     const overlay = el('analytics-drilldown');
     if (!overlay) return;
-    overlay.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease';
+    overlay.style.transition = 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease';
     overlay.style.transform  = 'translateX(100%)';
+    overlay.style.opacity    = '0';
     _finishCloseDrilldown();
   }
 
@@ -339,10 +360,9 @@
     if (!overlay) return;
     overlay.style.transition = 'none';
     overlay.style.transform  = 'translateX(100%)';
+    overlay.style.opacity    = '1';
     overlay.style.display    = 'none';
-    overlay.ontouchstart = null;
-    overlay.ontouchmove  = null;
-    overlay.ontouchend   = null;
+    _removeDrillGestureListeners(overlay);
 
     const parentScreen = el('screen-analytics');
     if (parentScreen) {
