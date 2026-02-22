@@ -373,11 +373,34 @@ async function initApp() {
   }
 
   function _findBackdrop(panel) {
-    if (!panel || !panel.id) return null;
-    var id = panel.id
-      .replace('-panel', '-backdrop')
-      .replace(/-sheet$/, '-sheet-backdrop');
-    return document.getElementById(id) || null;
+    if (!panel) return null;
+
+    // Strategy 1: look for a preceding sibling with class bottom-sheet-backdrop
+    var sibling = panel.previousElementSibling;
+    while (sibling) {
+      if (sibling.classList && sibling.classList.contains('bottom-sheet-backdrop')) {
+        return sibling;
+      }
+      sibling = sibling.previousElementSibling;
+    }
+
+    // Strategy 2: try common ID patterns
+    if (!panel.id) return null;
+    var id = panel.id;
+    // e.g. "category-edit-sheet" → "category-sheet-backdrop"
+    // e.g. "txn-edit-sheet-panel" → "txn-edit-sheet-backdrop"
+    // e.g. "edit-sheet-panel" → "edit-sheet-backdrop"
+    var candidates = [
+      id.replace('-panel', '-backdrop'),
+      id.replace(/-edit-sheet$/, '-sheet-backdrop'),
+      id.replace(/-sheet$/, '-sheet-backdrop'),
+      id + '-backdrop',
+    ];
+    for (var i = 0; i < candidates.length; i++) {
+      var el = document.getElementById(candidates[i]);
+      if (el) return el;
+    }
+    return null;
   }
 
   // ── Helper: is the touch on the handle or header area? ──────────────────
