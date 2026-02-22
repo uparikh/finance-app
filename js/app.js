@@ -209,22 +209,24 @@ async function initApp() {
     // left staring at a spinner if IndexedDB is unavailable (e.g. private
     // browsing mode on some browsers, or storage quota exceeded).
     const loadingEl = document.getElementById('app-loading');
+    var isPrivateMode = err && err.message && err.message.indexOf('timed out') !== -1;
     if (loadingEl) {
       loadingEl.innerHTML = `
         <span style="font-size: 48px;">⚠️</span>
         <p style="font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 0;">
-          Storage unavailable
+          ${isPrivateMode ? 'Private mode detected' : 'Storage unavailable'}
         </p>
         <p style="font-size: 13px; color: var(--text-secondary); text-align: center; max-width: 280px; margin: 0;">
-          This app requires IndexedDB storage. Please make sure you're not in
-          private/incognito mode, then reload the page.
+          ${isPrivateMode
+            ? 'This app stores your data locally and cannot run in Private/Incognito mode. Please open it in a regular browser tab.'
+            : 'This app requires IndexedDB storage. Please make sure you\'re not in private/incognito mode, then reload the page.'}
         </p>
         <button
           onclick="location.reload()"
           style="margin-top: 8px; padding: 10px 24px; border-radius: 12px;
                  background: var(--accent-primary); color: #fff; border: none;
                  font-size: 14px; font-weight: 600; cursor: pointer;"
-        >Reload</button>
+        >Open in Regular Tab</button>
       `;
     }
     return; // Abort further initialization

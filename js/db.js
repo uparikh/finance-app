@@ -383,6 +383,15 @@
         return;
       }
 
+      // Safari Private mode silently hangs IndexedDB — reject after 8 s
+      var timeoutId = setTimeout(function () {
+        reject(new Error(
+          'IndexedDB timed out. ' +
+          'If you are in Private/Incognito mode, please switch to a regular tab. ' +
+          'IndexedDB is not available in private browsing.'
+        ));
+      }, 8000);
+
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       // ── Schema creation / migration ──────────────────────────────────────
@@ -431,6 +440,7 @@
       };
 
       request.onsuccess = function (event) {
+        clearTimeout(timeoutId);
         _db = event.target.result;
 
         // Handle unexpected version changes / connection issues
@@ -444,12 +454,15 @@
       };
 
       request.onerror = function (event) {
+        clearTimeout(timeoutId);
         console.error('[FinanceDB] Failed to open database:', event.target.error);
         reject(event.target.error);
       };
 
       request.onblocked = function () {
+        clearTimeout(timeoutId);
         console.warn('[FinanceDB] Database open blocked — another tab may have an older version open.');
+        reject(new Error('IndexedDB open was blocked by another tab. Please close other tabs running this app and reload.'));
       };
     });
   }
