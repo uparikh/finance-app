@@ -181,6 +181,14 @@ function wireThemeToggle() {
 async function initApp() {
   console.log('[App] Starting initialization...');
 
+  // Helper: update the splash subtitle so we can see exactly where we are
+  function setSplashStatus(msg) {
+    var el = document.getElementById('splash-status');
+    if (el) el.textContent = msg;
+  }
+
+  setSplashStatus('Starting…');
+
   // 1. Configure PDF.js worker (parsers.js depends on this)
   if (typeof pdfjsLib !== 'undefined') {
     pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -192,6 +200,7 @@ async function initApp() {
 
   // 2. Initialize the IndexedDB database layer.
   //    This must run before any screen tries to read/write data.
+  setSplashStatus('Opening database…');
   try {
     await FinanceDB.init(); // defined in db.js
   } catch (err) {
@@ -221,12 +230,16 @@ async function initApp() {
     return; // Abort further initialization
   }
 
+  setSplashStatus('Loading screens…');
+
   // 2. Apply saved theme immediately (theme.js auto-init already ran,
   //    but we call initTheme() here to sync any toggle UI elements)
   initTheme(); // defined in theme.js
 
   // 3. Load all screen HTML fragments into the DOM
   await loadAllScreens();
+
+  setSplashStatus('Wiring UI…');
 
   // 4. Wire bottom navigation
   wireBottomNav();
