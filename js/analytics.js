@@ -192,13 +192,15 @@
       parentScreen.style.overflow = 'hidden';
     }
 
-    // Show overlay — start off-screen right, slide in
+    // Show overlay — start off-screen right, slide in (Fix 1: use opacity+transform, hide immediately on close)
     overlay.style.transition = 'none';
     overlay.style.transform  = 'translateX(100%)';
+    overlay.style.opacity    = '0';
     overlay.style.display    = 'flex';
     requestAnimationFrame(function () {
-      overlay.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)';
+      overlay.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease';
       overlay.style.transform  = 'translateX(0)';
+      overlay.style.opacity    = '1';
     });
 
     // Wire back button (replace to avoid duplicate listeners)
@@ -290,7 +292,9 @@
    * Restores parent screen scroll immediately (Fix B3).
    */
   function _finishCloseDrilldown() {
-    // Restore parent screen scroll IMMEDIATELY (Fix B3 — no frosted texture delay)
+    const overlay = el('analytics-drilldown');
+
+    // Restore parent screen scroll IMMEDIATELY — this removes the frosted effect (Fix 1 + B3)
     const parentScreen = el('screen-analytics');
     if (parentScreen) {
       parentScreen.style.overflow = '';
@@ -299,11 +303,17 @@
       }
     }
 
+    // Fade out opacity immediately so the frosted backdrop disappears right away
+    if (overlay) {
+      overlay.style.opacity = '0';
+    }
+
+    // Hide and clean up after animation completes
     setTimeout(function () {
-      const overlay = el('analytics-drilldown');
       if (overlay) {
         overlay.style.display    = 'none';
         overlay.style.transform  = 'translateX(100%)';
+        overlay.style.opacity    = '1'; // reset for next open
         overlay.style.transition = 'none';
         overlay.ontouchstart = null;
         overlay.ontouchmove  = null;
@@ -316,7 +326,7 @@
   function closeDrilldown() {
     const overlay = el('analytics-drilldown');
     if (!overlay) return;
-    overlay.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)';
+    overlay.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease';
     overlay.style.transform  = 'translateX(100%)';
     _finishCloseDrilldown();
   }
@@ -348,8 +358,16 @@
    * @param {HTMLElement} container
    * @param {object} opts  { labels, datasets, yFormat }
    */
+  /**
+   * Renders a scrollable line chart with sticky y-axis (Fix 2).
+   * Shows 6 months of data at a time; user can scroll to see more.
+   * @param {HTMLElement} container
+   * @param {object} opts  { datasets: fn(summaries), yFormat }
+   */
   function renderDrillLineChart(container, opts) {
     const { gridColor, textColor } = getChartColors();
+    const Y_AXIS_WIDTH = 52;
+    const POINT_WIDTH  = 64; // px per data point — controls scroll density
 
     // Time range selector
     const rangeBar = document.createElement('div');
@@ -364,15 +382,35 @@
     `;
     container.appendChild(rangeBar);
 
-    // Canvas wrapper
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'position:relative;height:280px;width:100%;';
-    const canvas = document.createElement('canvas');
-    canvas.style.cssText = 'display:block;width:100%;height:280px;';
-    wrapper.appendChild(canvas);
-    container.appendChild(wrapper);
+    // Legend (for multi-dataset charts)
+    const legendEl = document.createElement('div');
+    legendEl.style.cssText = 'display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px;min-height:20px;';
+    container.appendChild(legendEl);
 
-    // Tooltip value display
+    // Outer wrapper: flex row — sticky y-axis on left, scrollable chart on right
+    const outerWrapper = document.createElement('div');
+    outerWrapper.style.cssText = 'display:flex;align-items:stretch;height:260px;';
+
+    // Sticky y-axis canvas
+    const yAxisCanvas = document.createElement('canvas');
+    yAxisCanvas.width  = Y_AXIS_WIDTH;
+    yAxisCanvas.height = 260;
+    yAxisCanvas.style.cssText = 'flex-shrink:0;width:' + Y_AXIS_WIDTH + 'px;height:260px;display:block;';
+    outerWrapper.appendChild(yAxisCanvas);
+
+    // Scrollable chart area
+    const scrollWrapper = document.createElement('div');
+    scrollWrapper.style.cssText = 'flex:1;overflow-x:auto;-webkit-overflow-scrolling:touch;';
+    const innerWrapper = document.createElement('div');
+    innerWrapper.style.cssText = 'position:relative;height:260px;min-width:100%;';
+    const canvas = document.createElement('canvas');
+    canvas.style.cssText = 'display:block;height:260px;';
+    innerWrapper.appendChild(canvas);
+    scrollWrapper.appendChild(innerWrapper);
+    outerWrapper.appendChild(scrollWrapper);
+    container.appendChild(outerWrapper);
+
+    // Tooltip
     const tooltip = document.createElement('div');
     tooltip.style.cssText = `
       margin-top: 16px;
@@ -383,64 +421,77 @@
       color: var(--text-primary);
       min-height: 44px;
       display: flex;
-      align-items: center;
-      gap: 8px;
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 4px;
     `;
     tooltip.innerHTML = '<span style="color:var(--text-secondary);">Tap a point to see details</span>';
     container.appendChild(tooltip);
+
+    // Helper: draw sticky y-axis
+    function drawYAxis(minVal, maxVal) {
+      const ctx = yAxisCanvas.getContext('2d');
+      ctx.clearRect(0, 0, Y_AXIS_WIDTH, 260);
+      ctx.fillStyle = getChartColors().textColor;
+      ctx.font = '10px -apple-system, sans-serif';
+      ctx.textAlign = 'right';
+      const steps = 5;
+      const chartTop = 10, chartBottom = 240;
+      const chartH = chartBottom - chartTop;
+      for (var i = 0; i <= steps; i++) {
+        var val = minVal + (maxVal - minVal) * (i / steps);
+        var y   = chartBottom - (chartH * i / steps);
+        var label = opts.yFormat ? opts.yFormat(Math.round(val)) :
+          ('$' + (Math.abs(val) >= 1000 ? (val / 1000).toFixed(0) + 'k' : Math.round(val)));
+        ctx.fillText(label, Y_AXIS_WIDTH - 4, y + 3);
+      }
+    }
 
     function buildChart(range) {
       _drillChart = destroyChart(_drillChart);
 
       const filtered = filterSummaries(_allSummaries, range);
       const labels   = filtered.map(function (s) { return monthKeyToShort(s.monthKey); });
+      const datasets = opts.datasets(filtered);
 
-      // Resize canvas
-      canvas.width  = wrapper.offsetWidth || (window.innerWidth - 32);
-      canvas.height = 280;
+      // Compute all values for y-axis range
+      var allVals = [];
+      datasets.forEach(function (ds) { allVals = allVals.concat(ds.data || []); });
+      var minVal = Math.min(0, Math.min.apply(null, allVals));
+      var maxVal = Math.max.apply(null, allVals.concat([0]));
+
+      // Chart width: at least 6 points visible, scroll for more
+      var availWidth = scrollWrapper.offsetWidth || (window.innerWidth - Y_AXIS_WIDTH - 32);
+      var pointWidth = Math.max(POINT_WIDTH, Math.floor(availWidth / Math.min(6, labels.length)));
+      var chartWidth = Math.max(availWidth, labels.length * pointWidth);
+      canvas.width  = chartWidth;
+      canvas.height = 260;
+      innerWrapper.style.width = chartWidth + 'px';
+
+      // Scroll to show the most recent 6 months (rightmost)
+      requestAnimationFrame(function () {
+        scrollWrapper.scrollLeft = Math.max(0, scrollWrapper.scrollWidth - scrollWrapper.clientWidth);
+      });
+
+      // Build legend
+      if (datasets.length > 1) {
+        legendEl.innerHTML = datasets.map(function (ds) {
+          return '<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text-secondary);">' +
+            '<span style="display:inline-block;width:20px;height:2px;background:' + (ds.borderColor || '#6C63FF') + ';border-radius:1px;"></span>' +
+            ds.label + '</span>';
+        }).join('');
+      }
 
       _drillChart = new Chart(canvas, {
         type: 'line',
-        data: {
-          labels: labels,
-          datasets: opts.datasets(filtered),
-        },
+        data: { labels: labels, datasets: datasets },
         options: {
-          responsive: true,
+          responsive: false,
           maintainAspectRatio: false,
           interaction: { mode: 'index', intersect: false },
           plugins: {
-            legend: {
-              display: opts.datasets(filtered).length > 1,
-              labels: {
-                color: textColor,
-                font: { size: 12 },
-                usePointStyle: true,
-                pointStyle: 'line',
-                boxWidth: 24,
-                boxHeight: 3,
-              },
-            },
-            tooltip: {
-              enabled: false,
-              external: function (ctx) {
-                const items = ctx.tooltip.dataPoints;
-                if (!items || items.length === 0) return;
-                const label = items[0].label;
-                const lines = items.map(function (item) {
-                  const color = item.dataset.borderColor || '#6C63FF';
-                  const val   = opts.yFormat ? opts.yFormat(item.raw) : formatCurrencyFull(item.raw);
-                  return `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:6px;flex-shrink:0;"></span>
-                          <strong>${item.dataset.label}:</strong>&nbsp;${val}`;
-                });
-                tooltip.innerHTML = `
-                  <div>
-                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">${label}</div>
-                    ${lines.map(function (l) { return '<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">' + l + '</div>'; }).join('')}
-                  </div>
-                `;
-              },
-            },
+            legend: { display: false }, // we draw our own legend above
+            tooltip: { enabled: false },
           },
           scales: {
             x: {
@@ -448,13 +499,10 @@
               ticks: { color: textColor, maxRotation: 0 },
             },
             y: {
+              min: minVal,
+              max: maxVal,
               grid: { color: gridColor },
-              ticks: {
-                color: textColor,
-                callback: function (v) {
-                  return opts.yFormat ? opts.yFormat(v) : ('$' + (v / 1000).toFixed(0) + 'k');
-                },
-              },
+              ticks: { display: false }, // drawn on sticky canvas
             },
           },
           onClick: function (event, elements) {
@@ -463,22 +511,20 @@
               const items = _drillChart.data.datasets.map(function (ds) {
                 const color = ds.borderColor || '#6C63FF';
                 const val   = opts.yFormat ? opts.yFormat(ds.data[idx]) : formatCurrencyFull(ds.data[idx]);
-                return `<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px;">
-                  <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;"></span>
-                  <strong>${ds.label}:</strong>&nbsp;${val}
-                </div>`;
+                return '<div style="display:flex;align-items:center;gap:6px;">' +
+                  '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + color + ';flex-shrink:0;"></span>' +
+                  '<strong>' + ds.label + ':</strong>&nbsp;' + val + '</div>';
               });
-              tooltip.innerHTML = `
-                <div>
-                  <div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">${_drillChart.data.labels[idx]}</div>
-                  ${items.join('')}
-                </div>
-              `;
+              tooltip.innerHTML =
+                '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">' + _drillChart.data.labels[idx] + '</div>' +
+                items.join('');
             }
+          },
+          animation: {
+            onComplete: function () { drawYAxis(minVal, maxVal); },
           },
         },
       });
-      requestAnimationFrame(function () { if (_drillChart) _drillChart.resize(); });
     }
 
     // Wire range buttons
@@ -581,7 +627,8 @@
       _drillChart = destroyChart(_drillChart);
 
       const filtered = filterSummaries(_allSummaries, range);
-      const { labels, values, colors } = opts.getData(filtered);
+      const data = opts.getData(filtered);
+      const { labels, values, colors } = data;
 
       // Compute min/max for y-axis
       const minVal = Math.min(0, Math.min.apply(null, values));
@@ -595,13 +642,45 @@
       canvas.height = 260;
       innerWrapper.style.width = chartWidth + 'px';
 
+      // Build per-bar border styles for out-of-scale bars (Fix 3)
+      var realRates  = data._realRates;
+      var cap        = data._cap;
+      var borderColors = [];
+      var borderWidths = [];
+      var borderDashes = [];
+      var bgColors     = [];
+
+      (colors || []).forEach(function (c, i) {
+        var isOOS = realRates && cap && Math.abs(realRates[i]) > cap;
+        if (isOOS) {
+          // Dotted border, semi-transparent fill
+          var baseColor = getSavingsRateColor(realRates[i]);
+          bgColors.push(baseColor.replace(')', ',0.25)').replace('rgb(', 'rgba('));
+          borderColors.push(baseColor);
+          borderWidths.push(2);
+          borderDashes.push([4, 3]);
+        } else {
+          bgColors.push(c || opts.barColor || '#6C63FF');
+          borderColors.push('transparent');
+          borderWidths.push(0);
+          borderDashes.push([]);
+        }
+      });
+
+      // If no per-bar styling needed, use simple colors
+      if (!realRates) {
+        bgColors = colors || opts.barColor || '#6C63FF';
+      }
+
       _drillChart = new Chart(canvas, {
         type: 'bar',
         data: {
           labels: labels,
           datasets: [{
             data: values,
-            backgroundColor: colors || opts.barColor || '#6C63FF',
+            backgroundColor: bgColors,
+            borderColor: borderColors.length ? borderColors : undefined,
+            borderWidth: borderWidths.length ? borderWidths : 0,
             borderRadius: 8,
             borderSkipped: false,
           }],
@@ -623,25 +702,45 @@
               max: maxVal,
               grid: { color: gridColor },
               ticks: {
-                display: false, // hidden — drawn on sticky y-axis canvas instead
+                display: false, // drawn on sticky y-axis canvas
               },
             },
           },
           onClick: function (event, elements) {
             if (elements && elements.length > 0) {
               const idx = elements[0].index;
-              const val = opts.yFormat ? opts.yFormat(values[idx]) : formatCurrencyFull(values[idx]);
-              tooltip.innerHTML = `
-                <div>
-                  <span style="font-weight:600;">${labels[idx]}:</span>&nbsp;${val}
-                </div>
-              `;
+              if (opts.getTooltipContent) {
+                // Custom tooltip (e.g. savings rate with out-of-scale note)
+                tooltip.innerHTML = '<div>' + opts.getTooltipContent(idx, labels[idx]) + '</div>';
+              } else {
+                const val = opts.yFormat ? opts.yFormat(values[idx]) : formatCurrencyFull(values[idx]);
+                tooltip.innerHTML = '<div><span style="font-weight:600;">' + labels[idx] + ':</span>&nbsp;' + val + '</div>';
+              }
             }
           },
           animation: {
             onComplete: function () {
-              // Draw sticky y-axis after chart renders
               drawYAxis(minVal, maxVal);
+              // Draw dotted borders manually (Chart.js borderDash not supported on bar)
+              if (borderDashes.some(function (d) { return d.length > 0; })) {
+                var ctx2 = canvas.getContext('2d');
+                var meta = _drillChart.getDatasetMeta(0);
+                meta.data.forEach(function (bar, i) {
+                  if (borderDashes[i] && borderDashes[i].length > 0) {
+                    ctx2.save();
+                    ctx2.setLineDash(borderDashes[i]);
+                    ctx2.strokeStyle = borderColors[i] || '#10B981';
+                    ctx2.lineWidth   = 2;
+                    var props = bar.getProps(['x', 'y', 'base', 'width'], true);
+                    var x = props.x - props.width / 2;
+                    var y = Math.min(props.y, props.base);
+                    var w = props.width;
+                    var h = Math.abs(props.base - props.y);
+                    ctx2.strokeRect(x + 1, y + 1, w - 2, h - 2);
+                    ctx2.restore();
+                  }
+                });
+              }
             },
           },
         },
@@ -977,21 +1076,55 @@
 
         case 'savings-rate':
           openDrilldown('Monthly Savings Rate', function (container) {
+            const CAP = 150; // display cap in %
+
+            // Add a legend note about the cap
+            const capNote = document.createElement('p');
+            capNote.style.cssText = 'font-size:11px;color:var(--text-secondary);margin-bottom:8px;';
+            capNote.textContent = 'Bars capped at ' + CAP + '%. Dotted border = not to scale.';
+            container.appendChild(capNote);
+
             renderDrillBarChart(container, {
               getData: function (filtered) {
+                var realRates = filtered.map(function (s) {
+                  if (!s.totalIncome || s.totalIncome === 0) return 0;
+                  return Math.round((s.netSavings / s.totalIncome) * 100);
+                });
+
+                // Store real rates for tooltip access
+                container._realRates  = realRates;
+                container._rateLabels = filtered.map(function (s) { return monthKeyToShort(s.monthKey); });
+
                 return {
-                  labels: filtered.map(function (s) { return monthKeyToShort(s.monthKey); }),
-                  values: filtered.map(function (s) {
-                    if (!s.totalIncome || s.totalIncome === 0) return 0;
-                    return Math.round((s.netSavings / s.totalIncome) * 100);
+                  labels: container._rateLabels,
+                  // Cap display values at ±CAP
+                  values: realRates.map(function (r) {
+                    return Math.max(-CAP, Math.min(CAP, r));
                   }),
-                  colors: filtered.map(function (s) {
-                    const rate = s.totalIncome > 0 ? (s.netSavings / s.totalIncome) * 100 : 0;
-                    return getSavingsRateColor(rate);
+                  colors: realRates.map(function (r) {
+                    // Out-of-scale: use semi-transparent fill
+                    var isOOS = Math.abs(r) > CAP;
+                    var base  = getSavingsRateColor(r);
+                    if (isOOS) {
+                      // Return a special marker — handled in buildChart via borderDash
+                      return base.replace(')', ',0.35)').replace('rgb(', 'rgba(').replace('#', 'rgba_hex_');
+                    }
+                    return base;
                   }),
+                  // Pass real rates so buildChart can set borderDash per bar
+                  _realRates: realRates,
+                  _cap: CAP,
                 };
               },
               yFormat: function (v) { return v + '%'; },
+              // Custom tooltip: show real rate + out-of-scale note
+              getTooltipContent: function (idx, label) {
+                var real = container._realRates && container._realRates[idx];
+                if (real === undefined) return label + ': ' + idx + '%';
+                var isOOS = Math.abs(real) > CAP;
+                return '<strong>' + label + ':</strong> ' + real + '%' +
+                  (isOOS ? '<br><span style="font-size:11px;color:var(--warning);">⚠️ Not shown to scale (capped at ' + CAP + '%)</span>' : '');
+              },
             });
           });
           break;
