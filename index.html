@@ -68,7 +68,7 @@
       // Register service worker for offline support
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function () {
-          navigator.serviceWorker.register('/sw.js')
+          navigator.serviceWorker.register('/finance-app/sw.js')
             .then(function (reg) {
               console.log('[App] Service Worker registered ✅', reg.scope);
             })

@@ -8,33 +8,36 @@
  *    These rarely change; serve fast from cache.
  */
 
-const CACHE_NAME = 'finance-app-v13';
+const CACHE_NAME = 'finance-app-v14';
+
+// Base path — empty string when served from root, '/repo-name' on GitHub Pages
+const BASE = '/finance-app';
 
 // ─── App Shell — all local files to cache ─────────────────────────────────────
 const APP_SHELL = [
-  '/',
-  '/index.html',
-  '/css/variables.css',
-  '/css/base.css',
-  '/css/components.css',
-  '/css/layout.css',
-  '/js/chart.min.js',
-  '/js/db.js',
-  '/js/parsers.js',
-  '/js/router.js',
-  '/js/theme.js',
-  '/js/app.js',
-  '/js/upload.js',
-  '/js/dashboard.js',
-  '/js/transactions.js',
-  '/js/analytics.js',
-  '/js/settings.js',
-  '/screens/dashboard.html',
-  '/screens/upload.html',
-  '/screens/transactions.html',
-  '/screens/analytics.html',
-  '/screens/settings.html',
-  '/manifest.json',
+  BASE + '/',
+  BASE + '/index.html',
+  BASE + '/css/variables.css',
+  BASE + '/css/base.css',
+  BASE + '/css/components.css',
+  BASE + '/css/layout.css',
+  BASE + '/js/chart.min.js',
+  BASE + '/js/db.js',
+  BASE + '/js/parsers.js',
+  BASE + '/js/router.js',
+  BASE + '/js/theme.js',
+  BASE + '/js/app.js',
+  BASE + '/js/upload.js',
+  BASE + '/js/dashboard.js',
+  BASE + '/js/transactions.js',
+  BASE + '/js/analytics.js',
+  BASE + '/js/settings.js',
+  BASE + '/screens/dashboard.html',
+  BASE + '/screens/upload.html',
+  BASE + '/screens/transactions.html',
+  BASE + '/screens/analytics.html',
+  BASE + '/screens/settings.html',
+  BASE + '/manifest.json',
 ];
 
 // ─── CDN Resources ────────────────────────────────────────────────────────────

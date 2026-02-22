@@ -2,8 +2,8 @@
   "name": "Finance Tracker",
   "short_name": "Finance",
   "description": "Personal finance tracking app — offline, private, on your iPhone",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "/finance-app/",
+  "scope": "/finance-app/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#F8F9FA",
@@ -36,7 +36,7 @@
       "name": "Upload Statement",
       "short_name": "Upload",
       "description": "Upload a new bank statement",
-      "url": "/?screen=upload"
+      "url": "/finance-app/?screen=upload"
     }
   ]
 }
