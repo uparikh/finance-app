@@ -110,8 +110,6 @@
       console.log('[Settings] init()');
 
       // ── iOS Fix: move bottom sheets to document.body so position:fixed works ──
-      // On iOS Safari, position:fixed children of overflow:auto containers scroll
-      // with the container. Moving sheets to body fixes this.
       ['category-sheet-backdrop', 'category-edit-sheet',
        'account-sheet-backdrop',  'account-edit-sheet',
        'confirm-sheet-backdrop',  'confirm-sheet'
@@ -126,10 +124,58 @@
       const toggle = document.getElementById('theme-toggle-input');
       if (toggle) {
         toggle.checked = (getCurrentTheme() === 'dark');
-        // Remove any old listener to avoid duplicates, then re-add
-        toggle.onchange = function () {
-          toggleTheme();
-        };
+        toggle.onchange = function () { toggleTheme(); };
+      }
+
+      // ── Accent Color Picker ─────────────────────────────────────────────────
+      const ACCENT_COLORS = [
+        { name: 'Indigo',  value: '#6C63FF' },
+        { name: 'Emerald', value: '#10B981' },
+        { name: 'Rose',    value: '#F43F5E' },
+        { name: 'Amber',   value: '#F59E0B' },
+        { name: 'Sky',     value: '#0EA5E9' },
+        { name: 'Violet',  value: '#8B5CF6' },
+      ];
+
+      const ACCENT_KEY = 'finance-app-accent';
+      const savedAccent = localStorage.getItem(ACCENT_KEY) || '#6C63FF';
+
+      // Apply saved accent on init
+      SettingsScreen._applyAccentColor(savedAccent);
+
+      const swatchContainer = document.getElementById('accent-color-swatches');
+      if (swatchContainer) {
+        swatchContainer.innerHTML = '';
+        ACCENT_COLORS.forEach(function (color) {
+          const btn = document.createElement('button');
+          btn.setAttribute('aria-label', color.name + ' accent color');
+          btn.setAttribute('title', color.name);
+          btn.style.cssText = `
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: ${color.value};
+            border: 3px solid ${color.value === savedAccent ? 'var(--text-primary)' : 'transparent'};
+            outline: 2px solid ${color.value === savedAccent ? color.value : 'transparent'};
+            outline-offset: 2px;
+            cursor: pointer;
+            transition: transform 0.15s ease, border-color 0.15s ease;
+            flex-shrink: 0;
+          `;
+          btn.addEventListener('click', function () {
+            localStorage.setItem(ACCENT_KEY, color.value);
+            SettingsScreen._applyAccentColor(color.value);
+            // Update swatch borders
+            swatchContainer.querySelectorAll('button').forEach(function (b) {
+              const isActive = b === btn;
+              b.style.borderColor = isActive ? 'var(--text-primary)' : 'transparent';
+              b.style.outlineColor = isActive ? color.value : 'transparent';
+            });
+          });
+          btn.addEventListener('mouseenter', function () { btn.style.transform = 'scale(1.15)'; });
+          btn.addEventListener('mouseleave', function () { btn.style.transform = 'scale(1)'; });
+          swatchContainer.appendChild(btn);
+        });
       }
 
       // Wire import file input
@@ -616,6 +662,34 @@
       }
 
       _openSheet('confirm-sheet-backdrop', 'confirm-sheet');
+    },
+
+    // ── _applyAccentColor ───────────────────────────────────────────────────
+
+    /**
+     * Applies an accent color to all CSS custom properties that use --accent.
+     * @param {string} hex  e.g. '#6C63FF'
+     */
+    _applyAccentColor: function (hex) {
+      if (!hex) return;
+      const root = document.documentElement;
+
+      function hexToRgb(h) {
+        const r = parseInt(h.slice(1, 3), 16);
+        const g = parseInt(h.slice(3, 5), 16);
+        const b = parseInt(h.slice(5, 7), 16);
+        return { r: r, g: g, b: b };
+      }
+
+      const { r, g, b } = hexToRgb(hex);
+      root.style.setProperty('--accent',          hex);
+      root.style.setProperty('--accent-primary',   hex);
+      root.style.setProperty('--accent-light',     'rgba(' + r + ',' + g + ',' + b + ',0.12)');
+      root.style.setProperty('--accent-rgb',       r + ',' + g + ',' + b);
+
+      // Update theme-color meta for browser chrome
+      const themeMeta = document.querySelector('meta[name="theme-color"]:not([media])');
+      if (themeMeta) themeMeta.setAttribute('content', hex);
     },
 
   }; // end SettingsScreen

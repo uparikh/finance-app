@@ -1,7 +1,7 @@
 <!-- ==========================================================================
-     analytics.html — Analytics Screen (Phase 7)
-     Deep insights: overview card, trend chart, category chart, savings rate,
-     top merchants, and spending calendar heatmap.
+     analytics.html — Analytics Screen
+     Overview card, category chart, savings rate, top merchants, calendar.
+     Drill-down charts are rendered in #analytics-drilldown overlay.
      ========================================================================== -->
 <div class="screen" id="screen-analytics" data-screen="analytics" aria-hidden="true">
 
@@ -14,7 +14,7 @@
   <div class="screen-content">
 
     <!-- ── Time Range Selector ──────────────────────────────────────────── -->
-    <div style="padding: 0 16px; margin-bottom: 16px;">
+    <div style="margin-bottom: 16px;">
       <div class="segmented-control" id="time-range-selector" role="group" aria-label="Time range">
         <button class="segmented-btn" data-range="week"
                 onclick="AnalyticsScreen.setTimeRange('week')" aria-label="1 week">1W</button>
@@ -49,9 +49,8 @@
     <div id="analytics-data" style="display:none;">
 
       <!-- ── 1. Overview Card ─────────────────────────────────────────── -->
-      <div style="padding: 0 16px; margin-bottom: 16px;">
+      <div style="margin-bottom: 16px;">
         <div class="overview-card" id="analytics-overview">
-          <!-- Populated by AnalyticsScreen.renderOverviewCard() -->
           <div class="skeleton" style="height:18px;width:100px;border-radius:6px;margin-bottom:12px;"></div>
           <div class="skeleton" style="height:14px;width:100%;border-radius:4px;margin-bottom:8px;"></div>
           <div class="skeleton" style="height:14px;width:100%;border-radius:4px;margin-bottom:8px;"></div>
@@ -59,8 +58,8 @@
         </div>
       </div>
 
-      <!-- ── 3. Spending by Category ──────────────────────────────────── -->
-      <div style="padding: 0 16px; margin-bottom: 16px;">
+      <!-- ── 2. Spending by Category ──────────────────────────────────── -->
+      <div style="margin-bottom: 16px;">
         <div class="card" style="padding: 20px;">
           <div class="card-header" style="margin-bottom: 12px;">
             <h4>Spending by Category</h4>
@@ -72,8 +71,8 @@
         </div>
       </div>
 
-      <!-- ── 4. Monthly Savings Rate ──────────────────────────────────── -->
-      <div style="padding: 0 16px; margin-bottom: 16px;">
+      <!-- ── 3. Monthly Savings Rate ──────────────────────────────────── -->
+      <div style="margin-bottom: 16px;">
         <div class="card" style="padding: 20px;">
           <div class="card-header" style="margin-bottom: 4px;">
             <h4>Savings Rate by Month</h4>
@@ -87,7 +86,6 @@
           <div style="position:relative; height:180px;">
             <canvas id="savings-chart"></canvas>
           </div>
-          <!-- Color legend -->
           <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap;">
             <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);">
               <span style="width:10px;height:10px;border-radius:2px;background:#10B981;display:inline-block;"></span>≥ 20% Great
@@ -102,15 +100,14 @@
         </div>
       </div>
 
-      <!-- ── 5. Top Merchants ─────────────────────────────────────────── -->
-      <div style="padding: 0 16px; margin-bottom: 16px;">
+      <!-- ── 4. Top Merchants ─────────────────────────────────────────── -->
+      <div style="margin-bottom: 16px;">
         <div class="card" style="padding: 20px;">
           <div class="card-header" style="margin-bottom: 4px;">
             <h4>Top Merchants</h4>
             <span style="font-size:12px;color:var(--text-secondary);">by total spend</span>
           </div>
           <div id="top-merchants-list">
-            <!-- Populated by AnalyticsScreen.renderTopMerchants() -->
             <div class="skeleton" style="height:44px;border-radius:8px;margin-bottom:8px;"></div>
             <div class="skeleton" style="height:44px;border-radius:8px;margin-bottom:8px;"></div>
             <div class="skeleton" style="height:44px;border-radius:8px;margin-bottom:8px;"></div>
@@ -119,10 +116,9 @@
         </div>
       </div>
 
-      <!-- ── 6. Spending Calendar ─────────────────────────────────────── -->
-      <div style="padding: 0 16px; margin-bottom: 32px;">
+      <!-- ── 5. Spending Calendar ─────────────────────────────────────── -->
+      <div style="margin-bottom: 32px;">
         <div class="card" style="padding: 20px;">
-          <!-- Calendar navigation -->
           <div class="calendar-nav">
             <button class="btn-icon" onclick="AnalyticsScreen.navigateCalendarMonth('prev')"
                     aria-label="Previous month" style="font-size:18px;padding:4px 8px;">‹</button>
@@ -130,10 +126,7 @@
             <button class="btn-icon" onclick="AnalyticsScreen.navigateCalendarMonth('next')"
                     aria-label="Next month" style="font-size:18px;padding:4px 8px;">›</button>
           </div>
-
-          <!-- Calendar grid — populated by AnalyticsScreen.renderCalendar() -->
           <div id="spending-calendar">
-            <!-- Skeleton placeholder -->
             <div class="calendar-grid">
               <div class="calendar-day-header">Mo</div>
               <div class="calendar-day-header">Tu</div>
@@ -144,8 +137,6 @@
               <div class="calendar-day-header">Su</div>
             </div>
           </div>
-
-          <!-- Legend -->
           <div style="display:flex;gap:12px;margin-top:14px;flex-wrap:wrap;justify-content:center;">
             <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);">
               <span style="width:14px;height:14px;border-radius:4px;background:var(--bg-secondary);display:inline-block;border:1px solid var(--border);"></span>No spend
@@ -169,5 +160,37 @@
     </div><!-- /#analytics-data -->
 
   </div><!-- /.screen-content -->
+
+  <!-- ── Drill-Down Overlay ────────────────────────────────────────────── -->
+  <!-- Slides in over the analytics screen when a metric is tapped -->
+  <div id="analytics-drilldown" style="
+    position: absolute;
+    inset: 0;
+    background: var(--bg-primary);
+    z-index: 20;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  ">
+    <!-- Drill-down header -->
+    <header class="screen-header" style="padding-top: env(safe-area-inset-top);">
+      <button id="drilldown-back-btn" class="btn-icon" aria-label="Back to analytics"
+              style="font-size:20px; margin-right:8px;">←</button>
+      <h2 id="drilldown-title" class="screen-header-title" style="font-size:17px;"></h2>
+      <div style="width:36px;"></div><!-- spacer -->
+    </header>
+
+    <!-- Drill-down scrollable content -->
+    <div id="drilldown-content" style="
+      flex: 1;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: 16px 16px calc(90px + env(safe-area-inset-bottom) + 16px);
+    ">
+      <!-- Populated by AnalyticsScreen.openDrilldown() -->
+    </div>
+  </div>
 
 </div><!-- /#screen-analytics -->

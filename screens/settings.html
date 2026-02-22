@@ -31,6 +31,20 @@
           <span class="toggle-thumb"></span>
         </label>
       </div>
+
+      <!-- Accent Color Picker -->
+      <div class="settings-row" style="cursor:default; flex-direction:column; align-items:flex-start; gap:12px;">
+        <div style="display:flex; align-items:center; gap:12px; width:100%;">
+          <span class="settings-row-icon">🎨</span>
+          <div class="settings-row-content">
+            <div class="settings-row-title">Accent Color</div>
+            <div class="settings-row-subtitle">Dashboard summary card color</div>
+          </div>
+        </div>
+        <div id="accent-color-swatches" style="display:flex; gap:10px; padding-left:44px; flex-wrap:wrap;" role="group" aria-label="Choose accent color">
+          <!-- Populated by SettingsScreen.init() -->
+        </div>
+      </div>
     </div>
 
     <!-- ════════════════════════════════════════════════════════════════════

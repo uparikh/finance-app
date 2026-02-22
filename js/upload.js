@@ -24,7 +24,7 @@
   /** Index of the transaction currently being edited in the bottom sheet */
   let editingIndex = -1;
 
-  /** Current filter: 'all' | 'income' | 'expense' */
+  /** Current filter: 'all' | 'income' | 'expense' | 'transfer' */
   let currentFilter = 'all';
 
   /** Progress simulation timer handle */
@@ -490,9 +490,11 @@
     // Apply filter
     let filtered = pendingTransactions;
     if (currentFilter === 'income') {
-      filtered = pendingTransactions.filter(t => t.amount > 0);
+      filtered = pendingTransactions.filter(t => t.amount > 0 && t.categoryId !== 'transfer');
     } else if (currentFilter === 'expense') {
-      filtered = pendingTransactions.filter(t => t.amount <= 0);
+      filtered = pendingTransactions.filter(t => t.amount <= 0 && t.categoryId !== 'transfer');
+    } else if (currentFilter === 'transfer') {
+      filtered = pendingTransactions.filter(t => t.categoryId === 'transfer');
     }
 
     // Count uncategorized
@@ -1044,7 +1046,7 @@
     currentFilter = filter;
 
     // Update button active states
-    ['all', 'income', 'expense'].forEach(function (f) {
+    ['all', 'income', 'expense', 'transfer'].forEach(function (f) {
       const btn = el('filter-btn-' + f);
       if (btn) {
         if (f === filter) {
@@ -1221,7 +1223,7 @@
     }
 
     // ── Wire up filter buttons ──────────────────────────────────────────────
-    ['all', 'income', 'expense'].forEach(function (f) {
+    ['all', 'income', 'expense', 'transfer'].forEach(function (f) {
       const btn = el('filter-btn-' + f);
       if (btn) {
         btn.onclick = function () { setFilter(f); };

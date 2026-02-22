@@ -371,6 +371,9 @@ function cleanMerchantName(rawDescription) {
 
   // 2. Remove common card network / aggregator prefixes
   //    e.g. "SQ *BLUE BOTTLE", "TST* CHIPOTLE", "PP*PAYPAL", "SP *SPOTIFY"
+  //    Also strip bank transaction type prefixes from Ally/checking statements:
+  //    "Check Card Purchase", "Debit Card Purchase", "ACH Debit", "POS Purchase", etc.
+  name = name.replace(/^(?:check\s+card\s+purchase|debit\s+card\s+purchase|pos\s+purchase|pos\s+debit|ach\s+debit|ach\s+credit|online\s+transfer|wire\s+transfer|bill\s+payment|recurring\s+payment|preauthorized\s+debit|electronic\s+payment)\s*/i, '');
   name = name.replace(/^(?:SQ\s*\*|TST\*\s*|PP\*|SP\s*\*|APL\*|DD\s*\*|DoorDash\s*\*)\s*/i, '');
 
   // 3. Remove transaction/reference IDs — sequences of 6+ alphanumeric chars
