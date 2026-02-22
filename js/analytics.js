@@ -411,12 +411,13 @@
     // Time range selector
     const rangeBar = document.createElement('div');
     rangeBar.style.cssText = 'margin-bottom:16px;';
+    var _initRange = (typeof _activeRange !== 'undefined' ? _activeRange : 6);
     rangeBar.innerHTML = `
       <div class="segmented-control" style="width:100%;">
-        <button class="segmented-btn" data-drill-range="3">3M</button>
-        <button class="segmented-btn active" data-drill-range="6">6M</button>
-        <button class="segmented-btn" data-drill-range="12">12M</button>
-        <button class="segmented-btn" data-drill-range="0">All</button>
+        <button class="segmented-btn${_initRange===3?' active':''}" data-drill-range="3">3M</button>
+        <button class="segmented-btn${(_initRange===6||_initRange==='6')?' active':''}" data-drill-range="6">6M</button>
+        <button class="segmented-btn${_initRange===12?' active':''}" data-drill-range="12">12M</button>
+        <button class="segmented-btn${_initRange===0?' active':''}" data-drill-range="0">All</button>
       </div>
     `;
     container.appendChild(rangeBar);
@@ -576,7 +577,7 @@
       });
     });
 
-    buildChart(6);
+    buildChart(_initRange);
   }
 
   /**
@@ -592,12 +593,13 @@
     // Time range selector
     const rangeBar = document.createElement('div');
     rangeBar.style.cssText = 'margin-bottom:16px;';
+    var _initRange2 = (typeof _activeRange !== 'undefined' ? _activeRange : 6);
     rangeBar.innerHTML = `
       <div class="segmented-control" style="width:100%;">
-        <button class="segmented-btn" data-drill-range="3">3M</button>
-        <button class="segmented-btn active" data-drill-range="6">6M</button>
-        <button class="segmented-btn" data-drill-range="12">12M</button>
-        <button class="segmented-btn" data-drill-range="0">All</button>
+        <button class="segmented-btn${_initRange2===3?' active':''}" data-drill-range="3">3M</button>
+        <button class="segmented-btn${(_initRange2===6||_initRange2==='6')?' active':''}" data-drill-range="6">6M</button>
+        <button class="segmented-btn${_initRange2===12?' active':''}" data-drill-range="12">12M</button>
+        <button class="segmented-btn${_initRange2===0?' active':''}" data-drill-range="0">All</button>
       </div>
     `;
     container.appendChild(rangeBar);
@@ -692,12 +694,12 @@
       (colors || []).forEach(function (c, i) {
         var isOOS = realRates && cap && Math.abs(realRates[i]) > cap;
         if (isOOS) {
-          // Dotted border, semi-transparent fill
+          // 50% transparent fill + hatched overlay drawn in onComplete
           var baseColor = getSavingsRateColor(realRates[i]);
-          bgColors.push(baseColor.replace(')', ',0.25)').replace('rgb(', 'rgba('));
+          bgColors.push(baseColor.replace(')', ',0.5)').replace('rgb(', 'rgba('));
           borderColors.push(baseColor);
-          borderWidths.push(2);
-          borderDashes.push([4, 3]);
+          borderWidths.push(1.5);
+          borderDashes.push([4, 3]); // used as OOS marker
         } else {
           bgColors.push(c || opts.barColor || '#6C63FF');
           borderColors.push('transparent');
@@ -760,24 +762,39 @@
           animation: {
             onComplete: function () {
               drawYAxis(minVal, maxVal);
-              // Draw dotted borders manually (Chart.js borderDash not supported on bar)
+              // Draw hatched fill over out-of-scale bars
               if (borderDashes.some(function (d) { return d.length > 0; })) {
                 var ctx2 = canvas.getContext('2d');
                 var meta = _drillChart.getDatasetMeta(0);
                 meta.data.forEach(function (bar, i) {
-                  if (borderDashes[i] && borderDashes[i].length > 0) {
-                    ctx2.save();
-                    ctx2.setLineDash(borderDashes[i]);
-                    ctx2.strokeStyle = borderColors[i] || '#10B981';
-                    ctx2.lineWidth   = 2;
-                    var props = bar.getProps(['x', 'y', 'base', 'width'], true);
-                    var x = props.x - props.width / 2;
-                    var y = Math.min(props.y, props.base);
-                    var w = props.width;
-                    var h = Math.abs(props.base - props.y);
-                    ctx2.strokeRect(x + 1, y + 1, w - 2, h - 2);
-                    ctx2.restore();
+                  if (!borderDashes[i] || borderDashes[i].length === 0) return;
+                  var props = bar.getProps(['x', 'y', 'base', 'width'], true);
+                  var bx = props.x - props.width / 2;
+                  var by = Math.min(props.y, props.base);
+                  var bw = props.width;
+                  var bh = Math.abs(props.base - props.y);
+                  if (bw <= 0 || bh <= 0) return;
+
+                  ctx2.save();
+                  // Clip to bar bounds
+                  ctx2.beginPath();
+                  ctx2.rect(bx, by, bw, bh);
+                  ctx2.clip();
+
+                  // Draw diagonal hatch lines (45°, spacing 6px)
+                  ctx2.strokeStyle = borderColors[i] || '#10B981';
+                  ctx2.lineWidth   = 1.5;
+                  ctx2.globalAlpha = 0.6;
+                  ctx2.setLineDash([]);
+                  var spacing = 7;
+                  var total   = bw + bh;
+                  for (var d = -bh; d < bw; d += spacing) {
+                    ctx2.beginPath();
+                    ctx2.moveTo(bx + d, by);
+                    ctx2.lineTo(bx + d + bh, by + bh);
+                    ctx2.stroke();
                   }
+                  ctx2.restore();
                 });
               }
             },
@@ -795,7 +812,7 @@
       });
     });
 
-    buildChart(6);
+    buildChart(_initRange2);
   }
 
   // ─── Public API ─────────────────────────────────────────────────────────────
