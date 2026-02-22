@@ -18,7 +18,7 @@
   // ─── Constants ──────────────────────────────────────────────────────────────
 
   const DB_NAME    = 'FinanceAppDB';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
 
   // ─── Internal State ─────────────────────────────────────────────────────────
 
@@ -337,7 +337,7 @@
     ['direct deposit',     'income', 'Direct Deposit'],
     ['payroll',            'income', 'Payroll'],
     ['salary',             'income', 'Salary'],
-    ['ach credit',         'income', 'ACH Credit'],
+    ['ach deposit',        'income', 'ACH Deposit'],
     ['zelle from',         'income', 'Zelle'],
     ['venmo from',         'income', 'Venmo'],
     ['cashapp from',       'income', 'Cash App'],
