@@ -213,8 +213,17 @@
     // ── Swipe gesture: follow finger, spring back or dismiss (Fix 8 + B2) ──
     // Use addEventListener with passive:false so preventDefault() works on iOS
 
-    // Edge width for swipe-back gesture — matches iOS native behavior (~20px from left edge)
+    // Edge width for swipe-back gesture — matches iOS native behavior (~28px from left edge)
     var EDGE_WIDTH = 28;
+
+    // Find the header element inside the overlay (the drag handle zone)
+    var overlayHeader = overlay.querySelector('.screen-header');
+
+    function _isOnHeader(touch) {
+      if (!overlayHeader) return false;
+      var rect = overlayHeader.getBoundingClientRect();
+      return touch.clientY >= rect.top && touch.clientY <= rect.bottom;
+    }
 
     function _onTouchStart(e) {
       _drillGesture.active    = true;
@@ -224,8 +233,10 @@
       _drillGesture.lastY     = e.touches[0].clientY;
       _drillGesture.startTime = Date.now();
       _drillGesture.direction = null;
-      // Only allow horizontal back-swipe if touch started near the left edge
-      _drillGesture.edgeSwipe = e.touches[0].clientX <= EDGE_WIDTH;
+      // Horizontal back-swipe: only from left edge (like iOS)
+      _drillGesture.edgeSwipe   = e.touches[0].clientX <= EDGE_WIDTH;
+      // Vertical pull-down: only when dragging the header bar
+      _drillGesture.headerSwipe = _isOnHeader(e.touches[0]);
       overlay.style.transition = 'none';
     }
 
@@ -246,15 +257,15 @@
       var w = overlay.offsetWidth  || window.innerWidth;
       var h = overlay.offsetHeight || window.innerHeight;
 
-      // Horizontal back-swipe: ONLY if touch started at the left edge (like iOS)
       if (_drillGesture.direction === 'horizontal' && dx > 0 && _drillGesture.edgeSwipe) {
+        // Left-edge swipe-back: slide overlay right
         overlay.style.transform = 'translateX(' + dx + 'px)';
-        overlay.style.opacity = String(Math.max(0.3, 1 - dx / w));
+        overlay.style.opacity   = String(Math.max(0.3, 1 - dx / w));
         e.preventDefault();
-      } else if (_drillGesture.direction === 'vertical' && dy > 0) {
-        // Vertical swipe-down: available anywhere on the overlay
+      } else if (_drillGesture.direction === 'vertical' && dy > 0 && _drillGesture.headerSwipe) {
+        // Header pull-down: anchor overlay to finger, slide down
         overlay.style.transform = 'translateY(' + dy + 'px)';
-        overlay.style.opacity = String(Math.max(0.3, 1 - dy / h));
+        overlay.style.opacity   = String(Math.max(0.3, 1 - dy / h));
         e.preventDefault();
       }
     }
@@ -274,7 +285,8 @@
 
       // Horizontal dismiss only if it started as an edge swipe
       var dismissH = dir === 'horizontal' && dx > 0 && _drillGesture.edgeSwipe && (dx > w * 0.4 || vx > 0.4);
-      var dismissV = dir === 'vertical'   && dy > 0 && (dy > h * 0.35 || vy > 0.35);
+      // Vertical dismiss only if it started as a header swipe
+      var dismissV = dir === 'vertical' && dy > 0 && _drillGesture.headerSwipe && (dy > h * 0.35 || vy > 0.35);
 
       overlay.style.transition = 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease';
 
