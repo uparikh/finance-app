@@ -1,0 +1,208 @@
+<!-- ==========================================================================
+     upload.html — Upload Screen (Phase 4)
+     Three states: idle → parsing → review
+     Logic lives in js/upload.js (UploadScreen global)
+     The edit bottom sheet is injected into document.body by upload.js
+     to avoid position:fixed issues with transformed ancestors.
+     ========================================================================== -->
+<div class="screen" id="screen-upload" data-screen="upload" aria-hidden="true">
+
+  <!-- ── Sticky Header ──────────────────────────────────────────────────────── -->
+  <header class="screen-header">
+    <!-- Back button: only visible in review state -->
+    <button
+      id="upload-back-btn"
+      class="btn-icon"
+      aria-label="Back to upload"
+      style="display:none; margin-right:4px;"
+    >
+      <span style="font-size:20px;">←</span>
+    </button>
+
+    <h1 class="screen-header-title" id="upload-header-title">Upload Statement</h1>
+
+    <div class="screen-header-actions" id="upload-header-action">
+      <!-- placeholder for future history button -->
+    </div>
+  </header>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       STATE 1: IDLE
+       ══════════════════════════════════════════════════════════════════════════ -->
+  <div id="upload-idle" class="screen-content">
+
+    <!-- ── Upload Zone ──────────────────────────────────────────────────────── -->
+    <div
+      id="upload-zone"
+      class="upload-zone"
+      role="button"
+      tabindex="0"
+      aria-label="Tap to upload a bank statement PDF"
+    >
+      <!-- Hidden file input — triggered by JS when zone is tapped -->
+      <!-- multiple allows selecting several PDFs at once -->
+      <input
+        type="file"
+        accept=".pdf,application/pdf"
+        id="pdf-file-input"
+        multiple
+        style="display:none;"
+        aria-hidden="true"
+        tabindex="-1"
+      >
+
+      <div class="upload-zone-icon">📄</div>
+      <p class="upload-zone-title">Tap to upload a statement</p>
+      <p class="upload-zone-subtitle">Select one or multiple PDFs</p>
+    </div>
+
+    <!-- Bulk upload hint -->
+    <p style="font-size:12px;color:var(--text-secondary);text-align:center;margin-top:8px;">
+      💡 You can select multiple PDFs at once to import all at once
+    </p>
+
+    <!-- ── Supported Institutions ───────────────────────────────────────────── -->
+    <div style="margin-top: 20px;">
+      <p class="section-title">Supported Institutions</p>
+      <div class="institution-grid">
+        <span class="institution-chip">🏦 Ally</span>
+        <span class="institution-chip">💳 Capital One</span>
+        <span class="institution-chip">🏠 Bilt</span>
+        <span class="institution-chip">🔍 Discover</span>
+        <span class="institution-chip">🏛️ Wells Fargo</span>
+      </div>
+    </div>
+
+    <!-- ── Privacy Note ──────────────────────────────────────────────────────── -->
+    <div style="
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 14px;
+      background: var(--accent-light);
+      border-radius: 10px;
+      border: 1px solid var(--accent);
+      margin-top: 4px;
+    ">
+      <span style="font-size: 18px; flex-shrink: 0; margin-top: 1px;">🔒</span>
+      <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0;">
+        <strong style="color: var(--accent);">100% Private</strong> — All data stays on your device.
+        Nothing is uploaded to any server.
+      </p>
+    </div>
+
+    <!-- ── Recent Uploads ───────────────────────────────────────────────────── -->
+    <div style="margin-top: 24px;">
+      <p class="section-title">Recent Uploads</p>
+      <div id="recent-uploads-list">
+        <!-- Populated by UploadScreen.loadRecentUploads() -->
+        <p style="font-size:13px;color:var(--text-secondary);text-align:center;padding:16px 0;">
+          No uploads yet. Upload your first statement above.
+        </p>
+      </div>
+    </div>
+
+  </div><!-- /#upload-idle -->
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       STATE 2: PARSING
+       ══════════════════════════════════════════════════════════════════════════ -->
+  <div id="upload-parsing" class="screen-content" style="display:none;">
+
+    <div style="
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 24px 40px;
+      text-align: center;
+    ">
+      <!-- Hourglass spinner -->
+      <div style="font-size: 52px; margin-bottom: 20px;">⏳</div>
+
+      <h2 style="font-size: 20px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">
+        Reading PDF…
+      </h2>
+
+      <!-- File name / status -->
+      <p id="parsing-file-name" style="font-size: 13px; color: var(--text-secondary); margin-bottom: 24px; max-width: 280px; line-height: 1.5;">
+        Extracting transactions…
+      </p>
+
+      <!-- Progress bar -->
+      <div style="width: 100%; max-width: 320px;">
+        <div class="progress-bar-track">
+          <div id="parsing-progress-fill" class="progress-bar-fill" style="width: 10%;"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-top: 6px;">
+          <span id="parsing-status" style="font-size: 12px; color: var(--text-secondary);">Starting…</span>
+          <span id="parsing-percent" style="font-size: 12px; color: var(--text-secondary); font-weight: 600;">10%</span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /#upload-parsing -->
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       STATE 3: REVIEW
+       ══════════════════════════════════════════════════════════════════════════ -->
+  <div id="upload-review" style="display:none;">
+
+    <!-- Review content — scrolls with the .screen container -->
+    <div style="padding: 0 20px 8px;">
+
+      <!-- Parse result summary -->
+      <div id="review-summary" style="
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 0 12px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 12px;
+      ">
+        <!-- Populated by JS -->
+      </div>
+
+      <!-- Uncategorized warning banner -->
+      <div id="uncategorized-warning" class="warning-banner" style="display:none;">
+        <!-- Populated by JS -->
+      </div>
+
+      <!-- Filter row -->
+      <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center; flex-wrap: wrap;">
+        <span style="font-size: 13px; color: var(--text-secondary); font-weight: 600; flex-shrink: 0;">Filter:</span>
+        <button id="filter-btn-all"     class="chip chip-filter active" style="font-size:13px;">All</button>
+        <button id="filter-btn-income"  class="chip chip-filter"        style="font-size:13px;">💰 Income</button>
+        <button id="filter-btn-expense" class="chip chip-filter"        style="font-size:13px;">💸 Expense</button>
+      </div>
+
+      <!-- Transaction list — populated by UploadScreen.renderReviewList() -->
+      <div id="review-transaction-list"></div>
+
+    </div><!-- /review content -->
+
+    <!-- Sticky bottom action bar — sticks to bottom of .screen scroll container -->
+    <div class="sticky-save-bar">
+      <button
+        id="review-cancel-btn"
+        class="btn btn-ghost"
+        style="flex: 1;"
+        aria-label="Cancel and discard parsed transactions"
+      >
+        Cancel
+      </button>
+      <button
+        id="save-btn"
+        class="btn btn-primary"
+        style="flex: 2;"
+        aria-label="Save all transactions"
+      >
+        Save Transactions
+      </button>
+    </div>
+
+  </div><!-- /#upload-review -->
+
+</div><!-- /#screen-upload -->

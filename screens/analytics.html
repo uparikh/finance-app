@@ -1,0 +1,186 @@
+<!-- ==========================================================================
+     analytics.html — Analytics Screen (Phase 7)
+     Deep insights: overview card, trend chart, category chart, savings rate,
+     top merchants, and spending calendar heatmap.
+     ========================================================================== -->
+<div class="screen" id="screen-analytics" data-screen="analytics" aria-hidden="true">
+
+  <!-- ── Sticky Header ──────────────────────────────────────────────────── -->
+  <header class="screen-header">
+    <h1 class="screen-header-title">📈 Analytics</h1>
+  </header>
+
+  <!-- ── Scrollable Content ─────────────────────────────────────────────── -->
+  <div class="screen-content">
+
+    <!-- ── Time Range Selector ──────────────────────────────────────────── -->
+    <div style="padding: 0 16px; margin-bottom: 16px;">
+      <div class="segmented-control" id="time-range-selector" role="group" aria-label="Time range">
+        <button class="segmented-btn" data-range="week"
+                onclick="AnalyticsScreen.setTimeRange('week')" aria-label="1 week">1W</button>
+        <button class="segmented-btn" data-range="month"
+                onclick="AnalyticsScreen.setTimeRange('month')" aria-label="1 month">1M</button>
+        <button class="segmented-btn" data-range="3"
+                onclick="AnalyticsScreen.setTimeRange(3)" aria-label="3 months">3M</button>
+        <button class="segmented-btn active" data-range="6"
+                onclick="AnalyticsScreen.setTimeRange(6)" aria-label="6 months">6M</button>
+        <button class="segmented-btn" data-range="12"
+                onclick="AnalyticsScreen.setTimeRange(12)" aria-label="12 months">12M</button>
+        <button class="segmented-btn" data-range="0"
+                onclick="AnalyticsScreen.setTimeRange(0)" aria-label="All time">All</button>
+      </div>
+    </div>
+
+    <!-- ── Empty State ──────────────────────────────────────────────────── -->
+    <div id="analytics-empty" style="display:none;">
+      <div class="empty-state">
+        <span class="empty-state-icon">📊</span>
+        <p class="empty-state-title">No data yet</p>
+        <p class="empty-state-subtitle">
+          Upload a bank statement to see your spending analytics and trends.
+        </p>
+        <button class="btn btn-primary" onclick="navigateTo('upload'); onScreenActivated('upload');">
+          Upload Statement
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Data Sections ────────────────────────────────────────────────── -->
+    <div id="analytics-data" style="display:none;">
+
+      <!-- ── 1. Overview Card ─────────────────────────────────────────── -->
+      <div style="padding: 0 16px; margin-bottom: 16px;">
+        <div class="overview-card" id="analytics-overview">
+          <!-- Populated by AnalyticsScreen.renderOverviewCard() -->
+          <div class="skeleton" style="height:18px;width:100px;border-radius:6px;margin-bottom:12px;"></div>
+          <div class="skeleton" style="height:14px;width:100%;border-radius:4px;margin-bottom:8px;"></div>
+          <div class="skeleton" style="height:14px;width:100%;border-radius:4px;margin-bottom:8px;"></div>
+          <div class="skeleton" style="height:14px;width:80%;border-radius:4px;"></div>
+        </div>
+      </div>
+
+      <!-- ── 2. Income vs Expenses Trend Chart ────────────────────────── -->
+      <div style="padding: 0 16px; margin-bottom: 16px;">
+        <div class="card" style="padding: 20px;">
+          <div class="card-header" style="margin-bottom: 12px;">
+            <h4>Income vs Expenses Trend</h4>
+            <div id="trend-chart-legend" style="display:flex;gap:12px;"></div>
+          </div>
+          <div style="position:relative; height:220px;">
+            <canvas id="trend-chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 3. Spending by Category ──────────────────────────────────── -->
+      <div style="padding: 0 16px; margin-bottom: 16px;">
+        <div class="card" style="padding: 20px;">
+          <div class="card-header" style="margin-bottom: 12px;">
+            <h4>Spending by Category</h4>
+            <span style="font-size:12px;color:var(--text-secondary);">Tap to filter</span>
+          </div>
+          <div id="category-chart-container" style="position:relative; height:200px;">
+            <canvas id="category-chart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 4. Monthly Savings Rate ──────────────────────────────────── -->
+      <div style="padding: 0 16px; margin-bottom: 16px;">
+        <div class="card" style="padding: 20px;">
+          <div class="card-header" style="margin-bottom: 4px;">
+            <h4>Savings Rate by Month</h4>
+          </div>
+          <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">
+            <span style="display:inline-flex;align-items:center;gap:4px;">
+              <span style="width:16px;height:2px;background:rgba(16,185,129,0.5);display:inline-block;border-radius:1px;"></span>
+              20% target
+            </span>
+          </p>
+          <div style="position:relative; height:180px;">
+            <canvas id="savings-chart"></canvas>
+          </div>
+          <!-- Color legend -->
+          <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap;">
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);">
+              <span style="width:10px;height:10px;border-radius:2px;background:#10B981;display:inline-block;"></span>≥ 20% Great
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);">
+              <span style="width:10px;height:10px;border-radius:2px;background:#F59E0B;display:inline-block;"></span>10–20% OK
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);">
+              <span style="width:10px;height:10px;border-radius:2px;background:#EF4444;display:inline-block;"></span>&lt; 10% Low
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 5. Top Merchants ─────────────────────────────────────────── -->
+      <div style="padding: 0 16px; margin-bottom: 16px;">
+        <div class="card" style="padding: 20px;">
+          <div class="card-header" style="margin-bottom: 4px;">
+            <h4>Top Merchants</h4>
+            <span style="font-size:12px;color:var(--text-secondary);">by total spend</span>
+          </div>
+          <div id="top-merchants-list">
+            <!-- Populated by AnalyticsScreen.renderTopMerchants() -->
+            <div class="skeleton" style="height:44px;border-radius:8px;margin-bottom:8px;"></div>
+            <div class="skeleton" style="height:44px;border-radius:8px;margin-bottom:8px;"></div>
+            <div class="skeleton" style="height:44px;border-radius:8px;margin-bottom:8px;"></div>
+            <div class="skeleton" style="height:44px;border-radius:8px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 6. Spending Calendar ─────────────────────────────────────── -->
+      <div style="padding: 0 16px; margin-bottom: 32px;">
+        <div class="card" style="padding: 20px;">
+          <!-- Calendar navigation -->
+          <div class="calendar-nav">
+            <button class="btn-icon" onclick="AnalyticsScreen.navigateCalendarMonth('prev')"
+                    aria-label="Previous month" style="font-size:18px;padding:4px 8px;">‹</button>
+            <span class="calendar-month-label" id="calendar-month-label">February 2026</span>
+            <button class="btn-icon" onclick="AnalyticsScreen.navigateCalendarMonth('next')"
+                    aria-label="Next month" style="font-size:18px;padding:4px 8px;">›</button>
+          </div>
+
+          <!-- Calendar grid — populated by AnalyticsScreen.renderCalendar() -->
+          <div id="spending-calendar">
+            <!-- Skeleton placeholder -->
+            <div class="calendar-grid">
+              <div class="calendar-day-header">Mo</div>
+              <div class="calendar-day-header">Tu</div>
+              <div class="calendar-day-header">We</div>
+              <div class="calendar-day-header">Th</div>
+              <div class="calendar-day-header">Fr</div>
+              <div class="calendar-day-header">Sa</div>
+              <div class="calendar-day-header">Su</div>
+            </div>
+          </div>
+
+          <!-- Legend -->
+          <div style="display:flex;gap:12px;margin-top:14px;flex-wrap:wrap;justify-content:center;">
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);">
+              <span style="width:14px;height:14px;border-radius:4px;background:var(--bg-secondary);display:inline-block;border:1px solid var(--border);"></span>No spend
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);">
+              <span style="width:14px;height:14px;border-radius:4px;background:rgba(108,99,255,0.2);display:inline-block;"></span>&lt; $30
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);">
+              <span style="width:14px;height:14px;border-radius:4px;background:rgba(108,99,255,0.4);display:inline-block;"></span>$30–75
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);">
+              <span style="width:14px;height:14px;border-radius:4px;background:rgba(108,99,255,0.65);display:inline-block;"></span>$75–150
+            </span>
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);">
+              <span style="width:14px;height:14px;border-radius:4px;background:rgba(239,68,68,0.7);display:inline-block;"></span>&gt; $150
+            </span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /#analytics-data -->
+
+  </div><!-- /.screen-content -->
+
+</div><!-- /#screen-analytics -->

@@ -1,0 +1,42 @@
+{
+  "name": "Finance Tracker",
+  "short_name": "Finance",
+  "description": "Personal finance tracking app — offline, private, on your iPhone",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F8F9FA",
+  "theme_color": "#6C63FF",
+  "lang": "en-US",
+  "dir": "ltr",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    {
+      "src": "assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/icons/icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Upload Statement",
+      "short_name": "Upload",
+      "description": "Upload a new bank statement",
+      "url": "/?screen=upload"
+    }
+  ]
+}

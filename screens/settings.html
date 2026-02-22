@@ -1,0 +1,386 @@
+<!-- ==========================================================================
+     settings.html — Settings Screen (Phase 8)
+     Appearance · Categories · Accounts · Data · Storage · About
+     ========================================================================== -->
+<div class="screen" id="screen-settings" data-screen="settings" aria-hidden="true">
+
+  <!-- ── Sticky Header ──────────────────────────────────────────────────── -->
+  <header class="screen-header">
+    <h1 class="screen-header-title">⚙️ Settings</h1>
+  </header>
+
+  <!-- ── Scrollable Content ─────────────────────────────────────────────── -->
+  <div class="screen-content">
+
+    <!-- ════════════════════════════════════════════════════════════════════
+         1. APPEARANCE
+         ════════════════════════════════════════════════════════════════════ -->
+    <p class="settings-section-header">Appearance</p>
+
+    <div class="settings-card">
+      <div class="settings-row" style="cursor:default;">
+        <span class="settings-row-icon">🌙</span>
+        <div class="settings-row-content">
+          <div class="settings-row-title">Dark Mode</div>
+          <div class="settings-row-subtitle">Switch between light and dark theme</div>
+        </div>
+        <!-- Toggle switch — wired by SettingsScreen.init() -->
+        <label class="toggle" aria-label="Toggle dark mode">
+          <input type="checkbox" id="theme-toggle-input" role="switch">
+          <span class="toggle-track"></span>
+          <span class="toggle-thumb"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+         2. CATEGORIES
+         ════════════════════════════════════════════════════════════════════ -->
+    <p class="settings-section-header">Categories</p>
+
+    <div class="settings-card">
+      <!-- Dynamic list injected by SettingsScreen.renderCategories() -->
+      <div id="settings-category-list">
+        <!-- Loading placeholder -->
+        <div class="category-settings-row" style="justify-content:center; padding:20px;">
+          <span style="font-size:13px; color:var(--text-secondary);">Loading categories…</span>
+        </div>
+      </div>
+
+      <!-- Add Category button -->
+      <button
+        class="add-category-btn"
+        onclick="SettingsScreen.openCategoryEdit(null)"
+        aria-label="Add new category"
+      >
+        <span style="font-size:18px; line-height:1;">＋</span>
+        Add Category
+      </button>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+         3. ACCOUNTS
+         ════════════════════════════════════════════════════════════════════ -->
+    <p class="settings-section-header">Accounts</p>
+
+    <div class="settings-card">
+      <!-- Dynamic list injected by SettingsScreen.renderAccounts() -->
+      <div id="settings-account-list">
+        <div class="account-settings-row" style="justify-content:center; padding:20px;">
+          <span style="font-size:13px; color:var(--text-secondary);">Loading accounts…</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+         4. DATA
+         ════════════════════════════════════════════════════════════════════ -->
+    <p class="settings-section-header">Data</p>
+
+    <div class="settings-card">
+
+      <!-- Export -->
+      <div class="settings-row" onclick="SettingsScreen.exportData()" role="button" tabindex="0">
+        <span class="settings-row-icon">📤</span>
+        <div class="settings-row-content">
+          <div class="settings-row-title">Export Data</div>
+          <div class="settings-row-subtitle">Download a JSON backup of all your data</div>
+        </div>
+        <span class="settings-row-action">›</span>
+      </div>
+
+      <!-- Import — hidden file input triggered on tap -->
+      <div
+        class="settings-row"
+        onclick="document.getElementById('import-file-input').click()"
+        role="button"
+        tabindex="0"
+      >
+        <span class="settings-row-icon">📥</span>
+        <div class="settings-row-content">
+          <div class="settings-row-title">Import / Restore</div>
+          <div class="settings-row-subtitle">Restore from a previous JSON backup</div>
+        </div>
+        <span class="settings-row-action">›</span>
+      </div>
+      <!-- Hidden file input -->
+      <input
+        type="file"
+        id="import-file-input"
+        accept=".json"
+        style="display:none;"
+        aria-hidden="true"
+      >
+
+      <!-- Clear All Data -->
+      <div
+        class="settings-row danger"
+        onclick="SettingsScreen.clearAllData()"
+        role="button"
+        tabindex="0"
+      >
+        <span class="settings-row-icon">🗑️</span>
+        <div class="settings-row-content">
+          <div class="settings-row-title">Clear All Data</div>
+          <div class="settings-row-subtitle">Delete all transactions (keeps categories &amp; accounts)</div>
+        </div>
+        <span class="settings-row-action" style="color:var(--danger);">›</span>
+      </div>
+
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+         5. STORAGE
+         ════════════════════════════════════════════════════════════════════ -->
+    <p class="settings-section-header">Storage</p>
+
+    <div class="settings-card" id="settings-storage-stats">
+      <div class="storage-stats-grid">
+        <div class="storage-stat-cell">
+          <div class="storage-stat-value" id="stat-transaction-count">—</div>
+          <div class="storage-stat-label">Transactions</div>
+        </div>
+        <div class="storage-stat-cell">
+          <div class="storage-stat-value" id="stat-month-count">—</div>
+          <div class="storage-stat-label">Months tracked</div>
+        </div>
+        <div class="storage-stat-cell">
+          <div class="storage-stat-value" id="stat-oldest-month" style="font-size:16px;">—</div>
+          <div class="storage-stat-label">Oldest month</div>
+        </div>
+        <div class="storage-stat-cell">
+          <div class="storage-stat-value" id="stat-newest-month" style="font-size:16px;">—</div>
+          <div class="storage-stat-label">Newest month</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════════════
+         6. ABOUT
+         ════════════════════════════════════════════════════════════════════ -->
+    <p class="settings-section-header">About</p>
+
+    <div class="about-card">
+      <p class="about-version">Version 1.0.0</p>
+      <p class="about-privacy">
+        All data is stored locally on your device using IndexedDB.
+        Nothing is ever sent to any server.
+      </p>
+      <p class="about-love">Made with ❤️ for personal use</p>
+    </div>
+
+    <!-- Bottom padding so last card clears the nav bar -->
+    <div style="height: 32px;"></div>
+
+  </div><!-- /.screen-content -->
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       BOTTOM SHEET: Category Edit / Add
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div
+    class="bottom-sheet-backdrop"
+    id="category-sheet-backdrop"
+    onclick="
+      document.getElementById('category-sheet-backdrop').classList.remove('active');
+      document.getElementById('category-edit-sheet').classList.remove('active');
+    "
+    aria-hidden="true"
+  ></div>
+
+  <div class="bottom-sheet-panel" id="category-edit-sheet" role="dialog" aria-modal="true" aria-labelledby="category-sheet-title">
+
+    <!-- Handle -->
+    <div class="bottom-sheet-handle"></div>
+
+    <!-- Title -->
+    <h2 class="bottom-sheet-title" id="category-sheet-title">Edit Category</h2>
+
+    <!-- Emoji -->
+    <div class="form-group">
+      <label class="form-label" for="cat-edit-emoji">Emoji</label>
+      <input
+        type="text"
+        id="cat-edit-emoji"
+        class="form-input"
+        placeholder="🍔"
+        maxlength="4"
+        style="font-size:24px; text-align:center;"
+      >
+    </div>
+
+    <!-- Name -->
+    <div class="form-group">
+      <label class="form-label" for="cat-edit-name">Name</label>
+      <input
+        type="text"
+        id="cat-edit-name"
+        class="form-input"
+        placeholder="e.g. Food &amp; Dining"
+        maxlength="40"
+      >
+    </div>
+
+    <!-- Color -->
+    <div class="form-group">
+      <label class="form-label">Color</label>
+      <div class="color-picker-row">
+        <div class="color-preview" id="cat-edit-color-preview" style="background:#6C63FF;"></div>
+        <input
+          type="color"
+          id="cat-edit-color"
+          value="#6C63FF"
+          aria-label="Pick category color"
+        >
+        <span style="font-size:13px; color:var(--text-secondary);">Tap to choose a color</span>
+      </div>
+    </div>
+
+    <!-- Save button -->
+    <button
+      class="btn btn-primary btn-full btn-lg"
+      onclick="SettingsScreen.saveCategoryEdit()"
+      style="margin-top:8px;"
+    >
+      Save Category
+    </button>
+
+    <!-- Delete button (disabled for defaults) -->
+    <button
+      id="cat-delete-btn"
+      class="btn-danger-outline"
+      disabled
+      style="margin-top:12px;"
+    >
+      🗑️ Delete Category
+    </button>
+
+  </div><!-- /#category-edit-sheet -->
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       BOTTOM SHEET: Account Edit
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div
+    class="bottom-sheet-backdrop"
+    id="account-sheet-backdrop"
+    onclick="
+      document.getElementById('account-sheet-backdrop').classList.remove('active');
+      document.getElementById('account-edit-sheet').classList.remove('active');
+    "
+    aria-hidden="true"
+  ></div>
+
+  <div class="bottom-sheet-panel" id="account-edit-sheet" role="dialog" aria-modal="true" aria-labelledby="account-sheet-title">
+
+    <!-- Handle -->
+    <div class="bottom-sheet-handle"></div>
+
+    <!-- Title -->
+    <h2 class="bottom-sheet-title" id="account-sheet-title">Edit Account</h2>
+
+    <!-- Name -->
+    <div class="form-group">
+      <label class="form-label" for="acct-edit-name">Account Name</label>
+      <input
+        type="text"
+        id="acct-edit-name"
+        class="form-input"
+        placeholder="e.g. Ally Checking"
+        maxlength="60"
+      >
+    </div>
+
+    <!-- Color -->
+    <div class="form-group">
+      <label class="form-label">Color</label>
+      <div class="color-picker-row">
+        <div class="color-preview" id="acct-edit-color-preview" style="background:#6C63FF;"></div>
+        <input
+          type="color"
+          id="acct-edit-color"
+          value="#6C63FF"
+          aria-label="Pick account color"
+        >
+        <span style="font-size:13px; color:var(--text-secondary);">Tap to choose a color</span>
+      </div>
+    </div>
+
+    <!-- Active toggle -->
+    <div class="form-group">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:4px 0;">
+        <div>
+          <div style="font-size:15px; font-weight:500; color:var(--text-primary);">Active</div>
+          <div style="font-size:13px; color:var(--text-secondary); margin-top:2px;">Show this account in upload &amp; filters</div>
+        </div>
+        <label class="toggle" aria-label="Toggle account active state">
+          <input type="checkbox" id="acct-edit-active" checked>
+          <span class="toggle-track"></span>
+          <span class="toggle-thumb"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Save button -->
+    <button
+      class="btn btn-primary btn-full btn-lg"
+      onclick="SettingsScreen.saveAccountEdit()"
+      style="margin-top:8px;"
+    >
+      Save Account
+    </button>
+
+  </div><!-- /#account-edit-sheet -->
+
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       BOTTOM SHEET: Generic Confirmation
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div
+    class="bottom-sheet-backdrop"
+    id="confirm-sheet-backdrop"
+    onclick="
+      document.getElementById('confirm-sheet-backdrop').classList.remove('active');
+      document.getElementById('confirm-sheet').classList.remove('active');
+    "
+    aria-hidden="true"
+  ></div>
+
+  <div class="bottom-sheet-panel" id="confirm-sheet" role="dialog" aria-modal="true" aria-labelledby="confirm-sheet-title">
+
+    <!-- Handle -->
+    <div class="bottom-sheet-handle"></div>
+
+    <!-- Dynamic title -->
+    <h2
+      class="bottom-sheet-title"
+      id="confirm-sheet-title"
+      style="font-size:18px; margin-bottom:12px;"
+    >Are you sure?</h2>
+
+    <!-- Dynamic body -->
+    <p
+      id="confirm-sheet-body"
+      style="font-size:14px; color:var(--text-secondary); line-height:1.6; margin-bottom:24px; text-align:center;"
+    ></p>
+
+    <!-- Confirm button (class set dynamically) -->
+    <button
+      id="confirm-sheet-confirm-btn"
+      class="btn btn-danger btn-full btn-lg"
+      style="margin-bottom:12px;"
+    >
+      Confirm
+    </button>
+
+    <!-- Cancel button -->
+    <button
+      id="confirm-sheet-cancel-btn"
+      class="btn btn-ghost btn-full"
+    >
+      Cancel
+    </button>
+
+  </div><!-- /#confirm-sheet -->
+
+</div><!-- /#screen-settings -->

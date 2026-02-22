@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<!--
+  index.html — Finance App Shell
+  Single-page application entry point.
+  All screens are loaded dynamically into #screen-container by app.js.
+-->
+<head>
+  <meta charset="UTF-8">
+
+  <!-- ── Viewport: iPhone notch + safe area support ── -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+
+  <!-- ── PWA / iOS Home Screen ── -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Finance">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="apple-touch-icon" href="assets/icons/icon-180.png">
+  <link rel="apple-touch-startup-image" href="assets/icons/icon-512.png">
+
+  <!-- ── Theme color (browser chrome) ── -->
+  <meta name="theme-color" content="#6C63FF" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1A1A2E" media="(prefers-color-scheme: dark)">
+
+  <!-- ── SEO / Description ── -->
+  <meta name="description" content="Personal finance tracker — 100% offline, runs on your iPhone.">
+
+  <title>Finance</title>
+
+  <!-- ── PWA Manifest ── -->
+  <link rel="manifest" href="manifest.json">
+
+  <!-- ── Favicon placeholder ── -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       CSS — loaded in dependency order:
+       1. variables.css  → design tokens (colors, spacing, type, radii)
+       2. base.css       → reset, body, typography, utilities
+       3. components.css → cards, buttons, chips, modals, etc.
+       4. layout.css     → app shell, bottom nav, screen transitions
+       ══════════════════════════════════════════════════════════════════════ -->
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/layout.css">
+
+  <!-- ── Chart.js — loaded before dashboard.js so Chart is available ── -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- ── PDF.js — loaded in <head> so parsers.js can reference pdfjsLib ── -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <!--
+    ANTI-FLASH: Apply saved theme before first paint.
+    This tiny inline script runs synchronously so the user never sees
+    a flash of the wrong theme when they have dark mode saved.
+  -->
+  <script>
+    (function () {
+      // Anti-flash: apply saved theme before first paint
+      var saved = localStorage.getItem('finance-app-theme');
+      if (saved === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+
+      // Register service worker for offline support
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js')
+            .then(function (reg) {
+              console.log('[App] Service Worker registered ✅', reg.scope);
+            })
+            .catch(function (err) {
+              console.warn('[App] Service Worker registration failed:', err);
+            });
+        });
+      }
+    })();
+  </script>
+</head>
+
+<body>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       App Shell
+       Max-width 430px, centered on desktop, full-width on mobile.
+       ══════════════════════════════════════════════════════════════════════ -->
+  <!-- ── Splash Screen ─────────────────────────────────────────────────────
+       Shown while the app initialises (DB open, screens fetched).
+       app.js fades this out once the first screen is ready.
+       ─────────────────────────────────────────────────────────────────── -->
+  <div id="splash-screen" style="
+    position: fixed;
+    inset: 0;
+    background: var(--bg-primary, #F8F9FA);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    transition: opacity 0.4s ease;
+  ">
+    <div style="font-size: 64px; margin-bottom: 16px; line-height: 1;">📊</div>
+    <div style="font-size: 18px; font-weight: 700; color: var(--text-primary, #1A1A2E);">Finance</div>
+    <div style="font-size: 13px; color: var(--text-secondary, #6B7280); margin-top: 6px;">Loading…</div>
+  </div>
+
+  <div id="app" class="app-shell">
+
+    <!-- ── Screen Container ──────────────────────────────────────────────
+         app.js fetches each screen's HTML fragment and injects it here.
+         The router then shows/hides screens by toggling .active.
+         ─────────────────────────────────────────────────────────────── -->
+    <div id="screen-container" role="main" aria-live="polite">
+      <!--
+        Loading state — shown while screen HTML files are being fetched.
+        app.js removes this once all screens are loaded.
+      -->
+      <div id="app-loading" style="
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100dvh;
+        height: 100vh;
+        gap: 16px;
+        background-color: var(--bg-primary);
+        color: var(--text-secondary);
+        font-family: var(--font-family);
+      ">
+        <span style="font-size: 48px;">💰</span>
+        <p style="font-size: 14px; font-weight: 500;">Loading…</p>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         Bottom Navigation Bar
+         4 tabs: Home · Upload · Analytics · Settings
+         The Transactions screen is accessible from the Dashboard "See all"
+         link and is not a primary nav destination.
+         ══════════════════════════════════════════════════════════════════ -->
+    <nav class="bottom-nav" role="navigation" aria-label="Main navigation">
+
+      <!-- Home / Dashboard -->
+      <button
+        class="bottom-nav-item active"
+        data-nav="dashboard"
+        aria-label="Home"
+        aria-current="page"
+      >
+        <span class="bottom-nav-icon" aria-hidden="true">🏠</span>
+        <span class="bottom-nav-label">Home</span>
+      </button>
+
+      <!-- Upload -->
+      <button
+        class="bottom-nav-item"
+        data-nav="upload"
+        aria-label="Upload statement"
+      >
+        <span class="bottom-nav-icon" aria-hidden="true">📂</span>
+        <span class="bottom-nav-label">Upload</span>
+      </button>
+
+      <!-- Analytics -->
+      <button
+        class="bottom-nav-item"
+        data-nav="analytics"
+        aria-label="Analytics"
+      >
+        <span class="bottom-nav-icon" aria-hidden="true">📈</span>
+        <span class="bottom-nav-label">Analytics</span>
+      </button>
+
+      <!-- Settings -->
+      <button
+        class="bottom-nav-item"
+        data-nav="settings"
+        aria-label="Settings"
+      >
+        <span class="bottom-nav-icon" aria-hidden="true">⚙️</span>
+        <span class="bottom-nav-label">Settings</span>
+      </button>
+
+    </nav><!-- /.bottom-nav -->
+
+  </div><!-- /#app -->
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       JavaScript — loaded at end of body so DOM is ready.
+       Load order matters: app.js calls functions defined in router.js
+       and theme.js, so those must be parsed first.
+       ══════════════════════════════════════════════════════════════════════ -->
+  <!-- Script loading order is intentional — do not reorder.
+       Each file depends on globals defined by the files above it. -->
+  <script src="js/db.js"></script>
+  <script src="js/parsers.js"></script>
+  <script src="js/router.js"></script>
+  <script src="js/theme.js"></script>
+  <script src="js/upload.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/transactions.js"></script>
+  <script src="js/analytics.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/app.js"></script>
+
+</body>
+</html>

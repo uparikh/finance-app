@@ -1,0 +1,176 @@
+<!-- ==========================================================================
+     dashboard.html — Dashboard Screen (Phase 5)
+     Fully functional: reads real data from IndexedDB via DashboardScreen.
+     ========================================================================== -->
+<div class="screen" id="screen-dashboard" data-screen="dashboard" aria-hidden="true">
+
+  <!-- ── Sticky Header ──────────────────────────────────────────────────────── -->
+  <header style="
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: var(--bg-primary);
+    padding: 12px 20px 0;
+    padding-top: calc(12px + env(safe-area-inset-top));
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.2s, background-color 0.3s;
+  ">
+
+    <!-- Top row: icon + title -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+      <span style="font-size:24px;">💰</span>
+      <span style="font-size:17px;font-weight:700;color:var(--text-primary);">My Finances</span>
+    </div>
+
+    <!-- Month selector row -->
+    <div class="month-selector" style="padding:0 0 12px;">
+      <button
+        class="month-selector-btn"
+        id="month-prev-btn"
+        aria-label="Previous month"
+        onclick="DashboardScreen.navigateMonth('prev')"
+      >◀</button>
+      <span class="month-selector-label" id="month-selector-label">Loading…</span>
+      <button
+        class="month-selector-btn"
+        id="month-next-btn"
+        aria-label="Next month"
+        onclick="DashboardScreen.navigateMonth('next')"
+      >▶</button>
+    </div>
+
+  </header>
+
+  <!-- ── Scrollable Content ──────────────────────────────────────────────────── -->
+  <div class="screen-content" style="padding:0 16px 16px;">
+
+    <!-- ── Empty State ──────────────────────────────────────────────────────── -->
+    <div id="dashboard-empty" class="empty-state" style="display:none;">
+      <div class="empty-state-icon">📊</div>
+      <h2 class="empty-state-title">No data yet</h2>
+      <p class="empty-state-subtitle">
+        Upload your first bank statement<br>to get started
+      </p>
+      <button
+        class="btn btn-primary"
+        onclick="navigateTo('upload'); if(typeof onScreenActivated==='function') onScreenActivated('upload');"
+        aria-label="Upload statement"
+      >
+        Upload Statement →
+      </button>
+    </div>
+
+    <!-- ── Data Sections (hidden until data loads) ──────────────────────────── -->
+    <div id="dashboard-data" style="display:none;">
+
+      <!-- 1. Summary Card -->
+      <div id="summary-card" class="summary-card" style="margin-bottom:20px;">
+        <!-- Populated by DashboardScreen.renderSummaryCard() -->
+        <div class="skeleton" style="height:18px;width:120px;border-radius:6px;margin-bottom:12px;"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px;">
+          <div>
+            <div class="skeleton" style="height:12px;width:50px;border-radius:4px;margin-bottom:6px;"></div>
+            <div class="skeleton" style="height:24px;width:70px;border-radius:4px;"></div>
+          </div>
+          <div>
+            <div class="skeleton" style="height:12px;width:50px;border-radius:4px;margin-bottom:6px;"></div>
+            <div class="skeleton" style="height:24px;width:70px;border-radius:4px;"></div>
+          </div>
+          <div>
+            <div class="skeleton" style="height:12px;width:50px;border-radius:4px;margin-bottom:6px;"></div>
+            <div class="skeleton" style="height:24px;width:70px;border-radius:4px;"></div>
+          </div>
+        </div>
+        <div class="skeleton" style="height:6px;border-radius:3px;"></div>
+      </div>
+
+      <!-- 2. Account Balances -->
+      <div class="chart-card" id="accounts-card" style="margin-bottom:20px;display:none;">
+        <div class="chart-card-title">
+          <span>Account Balances</span>
+          <span id="net-worth-label" style="font-size:13px;color:var(--text-secondary);font-weight:500;"></span>
+        </div>
+        <div id="accounts-list">
+          <!-- Populated by DashboardScreen.renderAccountBalances() -->
+        </div>
+      </div>
+
+      <!-- 3. Spending Donut Chart -->
+      <div class="chart-card">
+        <div class="chart-card-title">
+          <span>Spending by Category</span>
+        </div>
+        <div class="donut-wrapper">
+          <div class="chart-container-donut">
+            <canvas id="donut-chart" aria-label="Spending by category donut chart" role="img"></canvas>
+          </div>
+          <!-- Center text overlay -->
+          <div class="donut-center-text">
+            <div class="donut-center-amount" id="donut-center-amount">—</div>
+            <div class="donut-center-label" id="donut-center-label">total spent</div>
+          </div>
+        </div>
+        <!-- Custom HTML legend -->
+        <div class="donut-legend" id="donut-legend"></div>
+      </div>
+
+      <!-- 3. Top Categories -->
+      <div class="chart-card">
+        <div class="chart-card-title">
+          <span>Top Categories</span>
+          <button
+            class="chart-card-link"
+            onclick="navigateTo('analytics'); if(typeof onScreenActivated==='function') onScreenActivated('analytics');"
+            aria-label="See all categories"
+          >See All →</button>
+        </div>
+        <div id="category-bars">
+          <!-- Populated by DashboardScreen.renderCategoryBars() -->
+          <div class="skeleton" style="height:48px;border-radius:8px;margin-bottom:12px;"></div>
+          <div class="skeleton" style="height:48px;border-radius:8px;margin-bottom:12px;"></div>
+          <div class="skeleton" style="height:48px;border-radius:8px;"></div>
+        </div>
+      </div>
+
+      <!-- 4. Monthly Trend Bar Chart -->
+      <div class="chart-card">
+        <div class="chart-card-title">
+          <span>Monthly Trend</span>
+          <!-- Legend dots -->
+          <span style="display:flex;align-items:center;gap:12px;font-size:12px;font-weight:500;color:var(--text-secondary);">
+            <span style="display:flex;align-items:center;gap:4px;">
+              <span style="width:10px;height:10px;border-radius:2px;background:#10B981;display:inline-block;"></span>Income
+            </span>
+            <span style="display:flex;align-items:center;gap:4px;">
+              <span style="width:10px;height:10px;border-radius:2px;background:#6C63FF;display:inline-block;"></span>Expenses
+            </span>
+          </span>
+        </div>
+        <div class="chart-container" style="height:200px;">
+          <canvas id="trend-chart" aria-label="Monthly income and expenses bar chart" role="img"></canvas>
+        </div>
+      </div>
+
+      <!-- 5. Recent Transactions -->
+      <div class="chart-card">
+        <div class="chart-card-title">
+          <span>Recent Transactions</span>
+          <button
+            class="chart-card-link"
+            onclick="navigateTo('transactions'); if(typeof onScreenActivated==='function') onScreenActivated('transactions');"
+            aria-label="See all transactions"
+          >See All →</button>
+        </div>
+        <div id="recent-transactions">
+          <!-- Populated by DashboardScreen.renderRecentTransactions() -->
+          <div class="skeleton" style="height:56px;border-radius:8px;margin-bottom:8px;"></div>
+          <div class="skeleton" style="height:56px;border-radius:8px;margin-bottom:8px;"></div>
+          <div class="skeleton" style="height:56px;border-radius:8px;"></div>
+        </div>
+      </div>
+
+    </div><!-- /#dashboard-data -->
+
+  </div><!-- /.screen-content -->
+
+</div><!-- /#screen-dashboard -->

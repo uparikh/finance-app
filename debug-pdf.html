@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>PDF Debug Tool</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    body { font-family: system-ui; padding: 20px; background: #f5f5f5; max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 20px; }
+    .upload-area { border: 2px dashed #6C63FF; border-radius: 12px; padding: 40px; text-align: center; cursor: pointer; background: white; margin: 20px 0; }
+    #output { background: white; border-radius: 8px; padding: 16px; white-space: pre-wrap; font-family: monospace; font-size: 12px; max-height: 600px; overflow-y: auto; border: 1px solid #ddd; margin-top: 16px; }
+    .info { background: #EEF2FF; border-radius: 8px; padding: 12px; margin: 8px 0; font-size: 13px; }
+    .error { background: #FEE2E2; border-radius: 8px; padding: 12px; margin: 8px 0; font-size: 13px; color: #DC2626; }
+    button { background: #6C63FF; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-size: 14px; margin: 4px; }
+    #status { font-weight: bold; margin: 8px 0; }
+  </style>
+</head>
+<body>
+  <h1>🔍 PDF Debug Tool</h1>
+  <p>Upload your Ally Bank PDF to see what text is extracted. This helps diagnose parser issues.</p>
+
+  <div class="upload-area" onclick="document.getElementById('file-input').click()">
+    📄 Tap to select your PDF
+    <input type="file" id="file-input" accept=".pdf" style="display:none">
+  </div>
+
+  <div id="status"></div>
+  <div id="info-box"></div>
+
+  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+    <button onclick="copyText()">📋 Copy All Text</button>
+    <button onclick="showFirst500()">👁 Show First 500 chars</button>
+    <button onclick="testDetect()">🏦 Test Bank Detection</button>
+  </div>
+
+  <div id="output">Upload a PDF to see extracted text...</div>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    let extractedText = '';
+
+    document.getElementById('file-input').addEventListener('change', async function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const status = document.getElementById('status');
+      const output = document.getElementById('output');
+      const infoBox = document.getElementById('info-box');
+
+      status.textContent = '⏳ Reading PDF...';
+      output.textContent = '';
+      infoBox.innerHTML = '';
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+        status.textContent = `✅ PDF loaded — ${pdf.numPages} page(s)`;
+
+        let fullText = '';
+        const pageTexts = [];
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+
+          // Group items by Y position (same line)
+          const lineMap = {};
+          content.items.forEach(item => {
+            const y = Math.round(item.transform[5]);
+            if (!lineMap[y]) lineMap[y] = [];
+            lineMap[y].push(item.str);
+          });
+
+          // Sort lines top-to-bottom (descending Y in PDF coords)
+          const sortedYs = Object.keys(lineMap).map(Number).sort((a, b) => b - a);
+          const pageText = sortedYs.map(y => lineMap[y].join(' ')).join('\n');
+          pageTexts.push(pageText);
+          fullText += pageText + '\n';
+        }
+
+        extractedText = fullText;
+
+        // Show info
+        const lines = fullText.split('\n').filter(l => l.trim());
+        infoBox.innerHTML = `
+          <div class="info">
+            📊 <strong>Stats:</strong> ${pdf.numPages} pages, ${lines.length} lines, ${fullText.length} characters<br>
+            🏦 <strong>Bank detection:</strong> ${detectBankFromText(fullText)}<br>
+            🔍 <strong>Contains "Ally":</strong> ${fullText.toLowerCase().includes('ally') ? '✅ YES' : '❌ NO'}<br>
+            🔍 <strong>Contains "ally bank":</strong> ${fullText.toLowerCase().includes('ally bank') ? '✅ YES' : '❌ NO'}<br>
+            🔍 <strong>Contains "ally.com":</strong> ${fullText.toLowerCase().includes('ally.com') ? '✅ YES' : '❌ NO'}
+          </div>
+        `;
+
+        output.textContent = fullText;
+
+      } catch (err) {
+        status.textContent = '❌ Error reading PDF';
+        infoBox.innerHTML = `<div class="error">Error: ${err.message}</div>`;
+        console.error(err);
+      }
+    });
+
+    function detectBankFromText(text) {
+      const t = text.toLowerCase();
+      if (t.includes('ally bank') || t.includes('ally.com') || t.includes('ally financial')) return '✅ Ally Bank';
+      if (t.includes('capital one') || t.includes('capitalone.com')) return '✅ Capital One';
+      if (t.includes('bilt') || t.includes('biltrewards.com')) return '✅ Bilt';
+      if (t.includes('discover') || t.includes('discover.com')) return '✅ Discover';
+      if (t.includes('wells fargo') || t.includes('wellsfargo.com')) return '✅ Wells Fargo';
+      return '❌ UNKNOWN — bank not detected!';
+    }
+
+    function copyText() {
+      if (!extractedText) return alert('Upload a PDF first');
+      navigator.clipboard.writeText(extractedText).then(() => alert('Copied!'));
+    }
+
+    function showFirst500() {
+      if (!extractedText) return alert('Upload a PDF first');
+      alert('First 500 chars:\n\n' + extractedText.substring(0, 500));
+    }
+
+    function testDetect() {
+      if (!extractedText) return alert('Upload a PDF first');
+      const result = detectBankFromText(extractedText);
+      alert('Bank detection result: ' + result + '\n\nFirst 200 chars of text:\n' + extractedText.substring(0, 200));
+    }
+  </script>
+</body>
+</html>

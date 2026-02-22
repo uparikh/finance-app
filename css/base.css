@@ -1,0 +1,330 @@
+/* ==========================================================================
+   base.css — Reset, Body, Typography, and Utility Classes
+   iOS 26 "Liquid Glass" Design System
+   Depends on: variables.css (must be loaded first)
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Box-sizing reset
+   -------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* --------------------------------------------------------------------------
+   2. Root / HTML
+   -------------------------------------------------------------------------- */
+html {
+  font-size: var(--font-base);
+  /* Smooth theme transitions on every element that uses these properties */
+  transition: var(--transition-theme);
+  /* Prevent text size adjustment on orientation change (iOS) */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* Smooth anchor / programmatic scrolling */
+  scroll-behavior: smooth;
+}
+
+/* --------------------------------------------------------------------------
+   3. Body — iOS 26 style
+   -------------------------------------------------------------------------- */
+body {
+  font-family: -apple-system, 'SF Pro Display', 'SF Pro Text',
+               BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  font-size: var(--font-base);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-normal);
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+  /* Subtle radial gradient overlay — iOS 26 accent tint */
+  background-image: radial-gradient(
+    ellipse at 20% 0%,
+    rgba(94, 92, 230, 0.08) 0%,
+    transparent 60%
+  );
+  background-attachment: fixed;
+  /* Smooth theme color transitions */
+  transition: var(--transition-theme);
+  /* Prevent horizontal scroll on mobile */
+  overflow-x: hidden;
+  /* iOS-quality font rendering */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Tighter default letter-spacing — SF Pro style */
+  letter-spacing: -0.2px;
+}
+
+/* Dark mode body gradient */
+[data-theme="dark"] body {
+  background-image: radial-gradient(
+    ellipse at 20% 0%,
+    rgba(110, 108, 240, 0.10) 0%,
+    transparent 60%
+  );
+}
+
+/* --------------------------------------------------------------------------
+   4. Typography Scale — iOS 26 style
+   -------------------------------------------------------------------------- */
+h1 {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  line-height: 1.1;
+  color: var(--text-primary);
+  transition: var(--transition-theme);
+}
+
+h2 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  line-height: var(--line-height-tight);
+  color: var(--text-primary);
+  transition: var(--transition-theme);
+}
+
+h3 {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  line-height: var(--line-height-tight);
+  color: var(--text-primary);
+  transition: var(--transition-theme);
+}
+
+h4 {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  line-height: var(--line-height-normal);
+  color: var(--text-primary);
+  transition: var(--transition-theme);
+}
+
+p {
+  font-size: var(--font-base);
+  line-height: var(--line-height-normal);
+  color: var(--text-primary);
+  transition: var(--transition-theme);
+}
+
+small {
+  font-size: var(--font-sm);
+  line-height: var(--line-height-normal);
+  color: var(--text-secondary);
+  transition: var(--transition-theme);
+}
+
+/* iOS large title style for screen headers */
+.screen-title-large {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--text-primary);
+  transition: var(--transition-theme);
+}
+
+.screen-title-small {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  color: var(--text-primary);
+  transition: var(--transition-theme);
+}
+
+/* Remove default list styles */
+ul,
+ol {
+  list-style: none;
+}
+
+/* Remove default link styles */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Make images responsive by default */
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* Make buttons inherit font */
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+/* Remove default input styles */
+input,
+textarea,
+select {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  outline: none;
+}
+
+/* --------------------------------------------------------------------------
+   5. Color Utility Classes
+   -------------------------------------------------------------------------- */
+
+/* Success / income / positive */
+.text-success {
+  color: var(--success) !important;
+  transition: var(--transition-theme);
+}
+
+/* Danger / overspending / negative */
+.text-danger {
+  color: var(--danger) !important;
+  transition: var(--transition-theme);
+}
+
+/* Secondary / muted text */
+.text-secondary {
+  color: var(--text-secondary) !important;
+  transition: var(--transition-theme);
+}
+
+/* Accent / brand color */
+.text-accent {
+  color: var(--accent) !important;
+  transition: var(--transition-theme);
+}
+
+/* Warning / caution */
+.text-warning {
+  color: var(--warning) !important;
+  transition: var(--transition-theme);
+}
+
+/* --------------------------------------------------------------------------
+   6. Font Weight Utilities
+   -------------------------------------------------------------------------- */
+.font-regular  { font-weight: var(--font-weight-regular); }
+.font-medium   { font-weight: var(--font-weight-medium); }
+.font-semibold { font-weight: var(--font-weight-semibold); }
+.font-bold     { font-weight: var(--font-weight-bold); }
+
+/* --------------------------------------------------------------------------
+   7. Font Size Utilities
+   -------------------------------------------------------------------------- */
+.text-xs   { font-size: var(--font-xs); }
+.text-sm   { font-size: var(--font-sm); }
+.text-base { font-size: var(--font-base); }
+.text-lg   { font-size: var(--font-lg); }
+.text-xl   { font-size: var(--font-xl); }
+.text-2xl  { font-size: var(--font-2xl); }
+
+/* --------------------------------------------------------------------------
+   8. Spacing Utilities
+   -------------------------------------------------------------------------- */
+.mt-1 { margin-top: var(--space-1); }
+.mt-2 { margin-top: var(--space-2); }
+.mt-3 { margin-top: var(--space-3); }
+.mt-4 { margin-top: var(--space-4); }
+.mt-6 { margin-top: var(--space-6); }
+.mt-8 { margin-top: var(--space-8); }
+
+.mb-1 { margin-bottom: var(--space-1); }
+.mb-2 { margin-bottom: var(--space-2); }
+.mb-3 { margin-bottom: var(--space-3); }
+.mb-4 { margin-bottom: var(--space-4); }
+.mb-6 { margin-bottom: var(--space-6); }
+.mb-8 { margin-bottom: var(--space-8); }
+
+/* --------------------------------------------------------------------------
+   9. Display / Flex Utilities
+   -------------------------------------------------------------------------- */
+.flex         { display: flex; }
+.flex-col     { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.justify-center  { justify-content: center; }
+.gap-1 { gap: var(--space-1); }
+.gap-2 { gap: var(--space-2); }
+.gap-3 { gap: var(--space-3); }
+.gap-4 { gap: var(--space-4); }
+
+/* --------------------------------------------------------------------------
+   10. Accessibility — Screen Reader Only
+   Visually hidden but readable by assistive technology
+   -------------------------------------------------------------------------- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --------------------------------------------------------------------------
+   11. Divider
+   -------------------------------------------------------------------------- */
+.divider {
+  height: 0.5px;
+  background-color: var(--separator);
+  transition: var(--transition-theme);
+  margin: var(--space-4) 0;
+}
+
+/* --------------------------------------------------------------------------
+   12. Tap highlight removal (iOS) — ALL interactive elements
+   -------------------------------------------------------------------------- */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* --------------------------------------------------------------------------
+   13. Spring tap feedback for all interactive elements
+   iOS 26 springy press response
+   -------------------------------------------------------------------------- */
+button,
+[role="button"],
+.txn-item,
+.settings-row,
+.filter-chip {
+  -webkit-tap-highlight-color: transparent;
+  transition: transform var(--duration-fast) var(--spring);
+}
+
+button:active,
+[role="button"]:active {
+  transform: scale(0.96);
+}
+
+/* --------------------------------------------------------------------------
+   14. Smooth screen transitions
+   -------------------------------------------------------------------------- */
+.screen {
+  transition: opacity var(--duration-normal) var(--ease-out),
+              transform var(--duration-normal) var(--ease-out);
+}
+
+/* --------------------------------------------------------------------------
+   15. Form element font inheritance
+   Ensures inputs, selects, and textareas use the app font, not the UA default
+   -------------------------------------------------------------------------- */
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+}

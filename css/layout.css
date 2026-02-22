@@ -1,0 +1,350 @@
+/* ==========================================================================
+   layout.css — App Shell, Navigation, Screen System, Transitions
+   iOS 26 "Liquid Glass" Design System
+   Depends on: variables.css, base.css, components.css
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. App Shell
+   The outermost container — centers the app on desktop, fills on mobile
+   -------------------------------------------------------------------------- */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--app-max-width);
+  min-height: 100dvh;          /* dynamic viewport height — handles iOS toolbar */
+  min-height: 100vh;           /* fallback for older browsers */
+  margin: 0 auto;
+  position: relative;
+  background-color: var(--bg-primary);
+  transition: var(--transition-theme);
+  /* Subtle side borders on desktop to show the app boundary */
+  box-shadow: 0 0 0 0.5px var(--border);
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   2. Screen Container
+   Holds all screen divs; only the active one is visible
+   -------------------------------------------------------------------------- */
+#screen-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   3. Individual Screen
+   Each screen fills the container and scrolls independently
+   -------------------------------------------------------------------------- */
+.screen {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Extra bottom padding so content isn't hidden behind the nav bar */
+  padding-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom));
+  background-color: var(--bg-primary);
+  transition: var(--transition-theme);
+
+  /* Hidden by default — JS adds .active to show */
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition: opacity var(--duration-normal) var(--ease-out),
+              transform var(--duration-normal) var(--ease-out),
+              background-color 0.3s var(--ease-out),
+              color 0.3s var(--ease-out);
+}
+
+/* Active screen — visible and interactive */
+.screen.active {
+  opacity: 1;
+  pointer-events: all;
+  transform: translateY(0);
+}
+
+/* Smooth scroll on iOS */
+.screen {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* --------------------------------------------------------------------------
+   4. Screen Header
+   Sticky top bar per screen — glass material, title + optional action button
+   -------------------------------------------------------------------------- */
+.screen-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-5);
+  /* Glass material — always on */
+  background: rgba(242, 242, 247, 0.85);
+  backdrop-filter: var(--blur-xl);
+  -webkit-backdrop-filter: var(--blur-xl);
+  border-bottom: 0.5px solid var(--separator);
+  transition: background-color 0.3s var(--ease-out),
+              border-color 0.3s var(--ease-out);
+  /* Safe area for iPhone notch */
+  padding-top: env(safe-area-inset-top);
+  height: calc(var(--header-height) + env(safe-area-inset-top));
+}
+
+/* Dark mode screen header */
+[data-theme="dark"] .screen-header {
+  background: rgba(28, 28, 30, 0.85);
+}
+
+/* Scrolled state — slightly more opaque */
+.screen-header.scrolled {
+  background: rgba(242, 242, 247, 0.92);
+  border-bottom-color: var(--border);
+}
+
+[data-theme="dark"] .screen-header.scrolled {
+  background: rgba(28, 28, 30, 0.92);
+}
+
+.screen-header-title {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  color: var(--text-primary);
+  transition: var(--transition-theme);
+}
+
+.screen-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* --------------------------------------------------------------------------
+   5. Screen Content
+   The scrollable body area below the header
+   -------------------------------------------------------------------------- */
+.screen-content {
+  padding: var(--space-4) var(--space-5);
+  /* Extra bottom padding ensures content clears the fixed bottom nav bar */
+  padding-bottom: 80px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* --------------------------------------------------------------------------
+   6. Bottom Navigation Bar — iOS 26 Liquid Glass
+   Fixed to the bottom of the app shell
+   -------------------------------------------------------------------------- */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: var(--app-max-width);
+  height: calc(var(--nav-height) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  /* Liquid glass material */
+  background: rgba(249, 249, 249, 0.85);
+  backdrop-filter: var(--blur-xl);
+  -webkit-backdrop-filter: var(--blur-xl);
+  border-top: 0.5px solid var(--separator);
+  /* No box-shadow — iOS style */
+  box-shadow: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-around;
+  z-index: 50;
+  transition: background-color 0.3s var(--ease-out),
+              border-color 0.3s var(--ease-out);
+}
+
+/* Dark mode bottom nav */
+[data-theme="dark"] .bottom-nav {
+  background: rgba(28, 28, 30, 0.85);
+}
+
+/* --------------------------------------------------------------------------
+   7. Bottom Nav Item
+   Each tab: icon on top, label below
+   -------------------------------------------------------------------------- */
+.bottom-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: var(--space-3) var(--space-2);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  transition: color var(--duration-fast) var(--ease-out),
+              transform var(--duration-fast) var(--spring);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  min-height: var(--nav-height);
+  position: relative;
+}
+
+/* Active indicator dot above icon */
+.bottom-nav-item.active::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: var(--accent);
+}
+
+.bottom-nav-item.active {
+  color: var(--accent);
+}
+
+.bottom-nav-item:active {
+  transform: scale(0.92);
+}
+
+.bottom-nav-icon {
+  font-size: 22px;
+  line-height: 1;
+  transition: transform var(--duration-fast) var(--spring);
+}
+
+/* Active tab: subtle scale up */
+.bottom-nav-item.active .bottom-nav-icon {
+  transform: scale(1.05);
+}
+
+.bottom-nav-label {
+  font-size: var(--font-xs);
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  letter-spacing: -0.1px;
+  transition: var(--transition-theme);
+}
+
+/* --------------------------------------------------------------------------
+   8. Chips Scroll Row
+   Horizontally scrollable row of filter chips
+   -------------------------------------------------------------------------- */
+.chips-row {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+  /* Hide scrollbar on iOS/WebKit */
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.chips-row::-webkit-scrollbar {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+   9. Upload History List
+   -------------------------------------------------------------------------- */
+.upload-history-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 0.5px solid var(--separator);
+  transition: var(--transition-theme);
+}
+
+.upload-history-item:last-child {
+  border-bottom: none;
+}
+
+.upload-history-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background-color: var(--accent-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+  transition: var(--transition-theme);
+}
+
+.upload-history-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.upload-history-name {
+  font-size: var(--font-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: var(--transition-theme);
+}
+
+.upload-history-meta {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  margin-top: 2px;
+  transition: var(--transition-theme);
+}
+
+.upload-history-status {
+  font-size: var(--font-xs);
+  font-weight: var(--font-weight-medium);
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.upload-history-status.success {
+  background-color: rgba(52, 199, 89, 0.15);
+  color: var(--success);
+}
+
+[data-theme="dark"] .upload-history-status.success {
+  background-color: rgba(48, 209, 88, 0.15);
+  color: var(--success);
+}
+
+/* --------------------------------------------------------------------------
+   10. Desktop centering helper
+   On screens wider than the app max-width, show a subtle background
+   -------------------------------------------------------------------------- */
+@media (min-width: 431px) {
+  body {
+    background-color: var(--bg-secondary);
+  }
+
+  .app-shell {
+    border-radius: 0;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   11. Scroll-to-top fade for long lists
+   -------------------------------------------------------------------------- */
+.fade-top {
+  position: sticky;
+  top: 0;
+  height: 24px;
+  background: linear-gradient(to bottom, var(--bg-primary), transparent);
+  pointer-events: none;
+  z-index: 5;
+  margin-bottom: -24px;
+  transition: var(--transition-theme);
+}

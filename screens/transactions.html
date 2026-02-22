@@ -1,0 +1,107 @@
+<!-- ==========================================================================
+     transactions.html — Transactions Screen (Phase 6)
+     Fully functional: reads from IndexedDB, filter chips, search, edit sheet.
+     ========================================================================== -->
+<div class="screen" id="screen-transactions" data-screen="transactions" aria-hidden="true">
+
+  <!-- ── Sticky Header ──────────────────────────────────────────────────────── -->
+  <header class="screen-header">
+    <h1 class="screen-header-title">Transactions</h1>
+    <div class="screen-header-actions">
+      <button id="txn-search-btn" class="btn-icon" aria-label="Search transactions">
+        <span style="font-size:20px;">🔍</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Search Bar (slides down) ───────────────────────────────────────────── -->
+  <div id="txn-search-bar" class="search-bar-container" role="search">
+    <div class="search-input-wrapper">
+      <span style="font-size:16px;color:var(--text-secondary);">🔍</span>
+      <input
+        type="search"
+        id="txn-search-input"
+        class="search-input"
+        placeholder="Search transactions…"
+        autocomplete="off"
+        autocorrect="off"
+        spellcheck="false"
+        aria-label="Search transactions"
+      >
+      <button id="txn-search-clear" class="search-clear-btn" aria-label="Clear search">✕</button>
+    </div>
+  </div>
+
+  <!-- ── Scrollable Content ─────────────────────────────────────────────────── -->
+  <div class="screen-content">
+
+    <!-- ── 1. Month Selector ──────────────────────────────────────────────── -->
+    <div class="styled-select-wrapper" style="margin-top:8px;">
+      <select id="txn-month-select" class="styled-select" aria-label="Select month">
+        <option value="">Loading…</option>
+      </select>
+      <span style="
+        position:absolute;
+        right:28px;
+        top:50%;
+        transform:translateY(-50%);
+        pointer-events:none;
+        color:var(--text-secondary);
+        font-size:12px;
+      ">▼</span>
+    </div>
+
+    <!-- ── 2. Category Filter Chips ───────────────────────────────────────── -->
+    <div
+      id="txn-category-chips"
+      class="filter-chips-row"
+      role="group"
+      aria-label="Filter by category"
+    >
+      <!-- Populated dynamically by TransactionsScreen -->
+      <button class="filter-chip active" data-category="">All</button>
+    </div>
+
+    <!-- ── 3. Account Filter ──────────────────────────────────────────────── -->
+    <div class="styled-select-wrapper">
+      <select id="txn-account-select" class="styled-select" aria-label="Filter by account">
+        <option value="">💳 All Accounts</option>
+      </select>
+      <span style="
+        position:absolute;
+        right:28px;
+        top:50%;
+        transform:translateY(-50%);
+        pointer-events:none;
+        color:var(--text-secondary);
+        font-size:12px;
+      ">▼</span>
+    </div>
+
+    <!-- ── 4. Summary Strip ───────────────────────────────────────────────── -->
+    <div id="txn-summary-strip" class="summary-strip" role="region" aria-label="Transaction summary">
+      <div class="summary-strip-item">
+        <div class="summary-strip-value" data-summary="count">—</div>
+        <div class="summary-strip-label">Transactions</div>
+      </div>
+      <div class="summary-strip-item">
+        <div class="summary-strip-value" data-summary="income" style="color:var(--success);">—</div>
+        <div class="summary-strip-label">Income</div>
+      </div>
+      <div class="summary-strip-item">
+        <div class="summary-strip-value" data-summary="expenses" style="color:var(--danger);">—</div>
+        <div class="summary-strip-label">Expenses</div>
+      </div>
+    </div>
+
+    <!-- ── 5. Transaction List ────────────────────────────────────────────── -->
+    <div id="txn-list" role="list" aria-label="Transactions">
+      <!-- Populated dynamically by TransactionsScreen.renderList() -->
+      <div class="empty-state">
+        <div class="empty-state-icon">⏳</div>
+        <p class="empty-state-title">Loading transactions…</p>
+      </div>
+    </div>
+
+  </div><!-- /.screen-content -->
+</div><!-- /#screen-transactions -->

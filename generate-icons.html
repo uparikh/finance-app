@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finance App — Icon Generator</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      padding: 40px;
+      background: #f0f0f0;
+      color: #1a1a1a;
+    }
+    h1 { font-size: 24px; margin-bottom: 8px; }
+    p  { color: #555; margin-bottom: 32px; }
+    code { background: #e0e0e0; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+    .icon-section {
+      background: white;
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 24px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      display: inline-flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 16px;
+    }
+    h2 { font-size: 16px; font-weight: 600; color: #333; margin: 0; }
+    canvas {
+      border-radius: 22%;
+      box-shadow: 0 4px 20px rgba(108,99,255,0.3);
+    }
+    .btn {
+      display: inline-block;
+      padding: 10px 22px;
+      background: #6C63FF;
+      color: white;
+      border-radius: 10px;
+      cursor: pointer;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #5a52e0; }
+    .sections { display: flex; flex-wrap: wrap; gap: 24px; }
+    .instructions {
+      background: #fff8e1;
+      border: 1px solid #ffe082;
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 32px;
+      max-width: 600px;
+    }
+    .instructions h3 { margin: 0 0 8px; font-size: 15px; }
+    .instructions ol { padding-left: 20px; color: #555; font-size: 14px; line-height: 1.8; }
+  </style>
+</head>
+<body>
+  <h1>📊 Finance App — Icon Generator</h1>
+  <p>Generate the PWA app icons for your Finance Tracker. Download each icon and place it in <code>assets/icons/</code>.</p>
+
+  <div class="instructions">
+    <h3>📋 Instructions</h3>
+    <ol>
+      <li>Click each <strong>Download</strong> button below</li>
+      <li>Save the file to <code>finance-app/assets/icons/</code></li>
+      <li>Make sure the filenames match exactly: <code>icon-192.png</code>, <code>icon-512.png</code>, <code>icon-180.png</code></li>
+      <li>Reload the app — the icons will appear when you "Add to Home Screen" on iPhone</li>
+    </ol>
+  </div>
+
+  <div class="sections">
+
+    <div class="icon-section">
+      <h2>192 × 192 — Standard PWA Icon</h2>
+      <canvas id="icon192" width="192" height="192"></canvas>
+      <a class="btn" id="dl192">⬇️ Download icon-192.png</a>
+    </div>
+
+    <div class="icon-section">
+      <h2>512 × 512 — Large / Splash Icon</h2>
+      <canvas id="icon512" width="512" height="512"></canvas>
+      <a class="btn" id="dl512">⬇️ Download icon-512.png</a>
+    </div>
+
+    <div class="icon-section">
+      <h2>180 × 180 — Apple Touch Icon</h2>
+      <canvas id="icon180" width="180" height="180"></canvas>
+      <a class="btn" id="dl180">⬇️ Download icon-180.png</a>
+    </div>
+
+  </div>
+
+  <script>
+    /**
+     * Draws the Finance Tracker icon onto a canvas.
+     * Design: purple gradient background, white bar chart + upward trend line.
+     * @param {HTMLCanvasElement} canvas
+     */
+    function drawIcon(canvas) {
+      const ctx = canvas.getContext('2d');
+      const s = canvas.width; // size shorthand
+
+      // ── Background: purple gradient rounded rect ──────────────────────────
+      const grad = ctx.createLinearGradient(0, 0, s, s);
+      grad.addColorStop(0, '#6C63FF');
+      grad.addColorStop(1, '#9B59B6');
+      ctx.fillStyle = grad;
+
+      // Rounded rectangle (iOS-style icon shape)
+      const r = s * 0.22;
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(0, 0, s, s, r);
+      } else {
+        // Fallback for browsers without roundRect
+        ctx.moveTo(r, 0);
+        ctx.lineTo(s - r, 0);
+        ctx.quadraticCurveTo(s, 0, s, r);
+        ctx.lineTo(s, s - r);
+        ctx.quadraticCurveTo(s, s, s - r, s);
+        ctx.lineTo(r, s);
+        ctx.quadraticCurveTo(0, s, 0, s - r);
+        ctx.lineTo(0, r);
+        ctx.quadraticCurveTo(0, 0, r, 0);
+        ctx.closePath();
+      }
+      ctx.fill();
+
+      // ── Bar chart: 3 bars of increasing height ────────────────────────────
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.90)';
+      const barW  = s * 0.12;
+      const gap   = s * 0.06;
+      const baseY = s * 0.74;
+
+      const bars = [
+        { x: s * 0.22,                    h: s * 0.26 },
+        { x: s * 0.22 + (barW + gap),     h: s * 0.38 },
+        { x: s * 0.22 + (barW + gap) * 2, h: s * 0.52 },
+      ];
+
+      bars.forEach(b => {
+        ctx.beginPath();
+        const br = s * 0.03; // bar corner radius
+        if (ctx.roundRect) {
+          ctx.roundRect(b.x, baseY - b.h, barW, b.h, [br, br, 0, 0]);
+        } else {
+          ctx.rect(b.x, baseY - b.h, barW, b.h);
+        }
+        ctx.fill();
+      });
+
+      // ── Trend line: upward diagonal with arrowhead ────────────────────────
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.lineWidth   = s * 0.038;
+      ctx.lineCap     = 'round';
+      ctx.lineJoin    = 'round';
+
+      // Main trend line
+      ctx.beginPath();
+      ctx.moveTo(s * 0.20, s * 0.60);
+      ctx.lineTo(s * 0.36, s * 0.44);
+      ctx.lineTo(s * 0.54, s * 0.50);
+      ctx.lineTo(s * 0.76, s * 0.28);
+      ctx.stroke();
+
+      // Arrowhead at the end of the trend line
+      ctx.beginPath();
+      ctx.moveTo(s * 0.76, s * 0.28);
+      ctx.lineTo(s * 0.67, s * 0.28);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(s * 0.76, s * 0.28);
+      ctx.lineTo(s * 0.76, s * 0.37);
+      ctx.stroke();
+    }
+
+    /**
+     * Draws an icon on a canvas and wires up the download button.
+     * @param {string} canvasId
+     * @param {string} dlId
+     * @param {string} filename
+     */
+    function setupIcon(canvasId, dlId, filename) {
+      const canvas = document.getElementById(canvasId);
+      drawIcon(canvas);
+
+      const dl = document.getElementById(dlId);
+      // Set href to PNG data URL so clicking downloads the image
+      dl.href     = canvas.toDataURL('image/png');
+      dl.download = filename;
+    }
+
+    // Generate all three icon sizes
+    setupIcon('icon192', 'dl192', 'icon-192.png');
+    setupIcon('icon512', 'dl512', 'icon-512.png');
+    setupIcon('icon180', 'dl180', 'icon-180.png');
+  </script>
+</body>
+</html>
