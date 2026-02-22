@@ -958,6 +958,17 @@
         );
       }
 
+      // Save credit score if the parser extracted one (Discover statements)
+      if (currentParseResult &&
+          currentParseResult.creditScore &&
+          currentParseResult.statementMonth) {
+        await FinanceDB.saveCreditScore(
+          currentParseResult.statementMonth,
+          currentParseResult.creditScore,
+          currentParseResult.bank || 'discover'
+        );
+      }
+
       const count = pendingTransactions.length;
       showToast('✅ ' + count + ' transaction' + (count !== 1 ? 's' : '') + ' saved!');
 
@@ -1409,6 +1420,13 @@
     showState:           showState,
     showToast:           showToast,
     isInReviewState:     isInReviewState,
+    cancelReview:        function () {
+      pendingTransactions = [];
+      currentParseResult  = null;
+      showState('idle');
+      var fi = document.getElementById('pdf-file-input');
+      if (fi) fi.value = '';
+    },
   };
 
   global.UploadScreen = UploadScreen;

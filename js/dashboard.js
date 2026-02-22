@@ -32,6 +32,9 @@
   /** @type {Chart|null} Cumulative net saved line chart */
   let _cumulativeChart = null;
 
+  /** @type {Chart|null} Credit score line chart */
+  let _creditChart = null;
+
   /** @type {boolean} Prevents concurrent loadMonth calls */
   let _loading = false;
 
@@ -243,6 +246,16 @@
           const cumulCard = el('cumulative-card');
           if (cumulCard) cumulCard.style.display = '';
         }
+
+        // Credit score chart
+        try {
+          const creditScores = await FinanceDB.getCreditScores();
+          if (creditScores && creditScores.length >= 1) {
+            DashboardScreen.renderCreditScoreChart(creditScores);
+            const creditCard = el('credit-score-card');
+            if (creditCard) creditCard.style.display = '';
+          }
+        } catch (e) { /* non-fatal */ }
 
         // Account balances
         DashboardScreen.renderAccountBalances();
@@ -559,16 +572,21 @@
         _cumulativeChart = null;
       }
 
-      const canvas     = el('dash-cumulative-chart');
-      const innerEl    = el('dash-cumulative-inner');
+      const canvas      = el('dash-cumulative-chart');
+      const innerEl     = el('dash-cumulative-inner');
       const yAxisCanvas = el('dash-cumulative-yaxis');
       if (!canvas || !innerEl || !yAxisCanvas) return;
 
       if (!allSummaries || allSummaries.length < 2) return;
 
-      const { gridColor, textColor } = getChartColors();
-      const Y_AXIS_W = 48;
-      const PT_WIDTH = 56; // px per data point
+      // Use explicit colors (Canvas 2D cannot read CSS variables)
+      const isDark    = document.documentElement.getAttribute('data-theme') === 'dark';
+      const textColor = isDark ? '#94A3B8' : '#6B7280';
+      const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+
+      const Y_AXIS_W = 52;
+      const CHART_H  = 200;
+      const PT_WIDTH = 56;
 
       // Build cumulative running total
       let running = 0;
@@ -582,22 +600,31 @@
 
       const lastVal   = data[data.length - 1] || 0;
       const lineColor = lastVal >= 0 ? '#10B981' : '#EF4444';
-      const fillColor = lastVal >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.08)';
+      const fillColor = lastVal >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.10)';
+      const dotColor  = lineColor;
 
       // Y-axis range with 12% padding
       const rawMin = Math.min.apply(null, data);
       const rawMax = Math.max.apply(null, data);
-      const pad    = Math.max(Math.abs(rawMax - rawMin) * 0.12, 1);
+      const pad    = Math.max(Math.abs(rawMax - rawMin) * 0.12, 100);
       const minVal = rawMin - pad;
       const maxVal = rawMax + pad;
 
       // Chart width: at least 12 points visible, scroll for more
-      const availW    = (innerEl.parentElement ? innerEl.parentElement.offsetWidth : 0) || (window.innerWidth - Y_AXIS_W - 32);
-      const ptW       = Math.max(PT_WIDTH, Math.floor(availW / Math.min(12, labels.length)));
-      const chartW    = Math.max(availW, labels.length * ptW);
-      canvas.width    = chartW;
-      canvas.height   = 160;
-      innerEl.style.width = chartW + 'px';
+      const availW = (innerEl.parentElement ? innerEl.parentElement.offsetWidth : 0) || (window.innerWidth - Y_AXIS_W - 32);
+      const ptW    = Math.max(PT_WIDTH, Math.floor(availW / Math.min(12, labels.length)));
+      const chartW = Math.max(availW, labels.length * ptW);
+      canvas.width  = chartW;
+      canvas.height = CHART_H;
+      yAxisCanvas.width  = Y_AXIS_W;
+      yAxisCanvas.height = CHART_H;
+      yAxisCanvas.style.height = CHART_H + 'px';
+      innerEl.style.width  = chartW + 'px';
+      innerEl.style.height = CHART_H + 'px';
+
+      // Update outer wrapper height
+      var outerWrapper = innerEl.parentElement && innerEl.parentElement.parentElement;
+      if (outerWrapper) outerWrapper.style.height = CHART_H + 'px';
 
       // Scroll to most recent (rightmost)
       requestAnimationFrame(function () {
@@ -605,19 +632,22 @@
         if (sw) sw.scrollLeft = sw.scrollWidth;
       });
 
-      // Draw sticky y-axis
+      // Draw sticky y-axis with explicit pixel colors
       function drawYAxis() {
         var ctx = yAxisCanvas.getContext('2d');
-        ctx.clearRect(0, 0, Y_AXIS_W, 160);
+        ctx.clearRect(0, 0, Y_AXIS_W, CHART_H);
         ctx.fillStyle = textColor;
-        ctx.font = '10px -apple-system, sans-serif';
+        ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
         ctx.textAlign = 'right';
-        var steps = 4;
-        var top = 10, bottom = 148, h = bottom - top;
+        var steps  = 4;
+        var top    = 12;
+        var bottom = CHART_H - 24; // leave room for x-axis labels
+        var h      = bottom - top;
         for (var i = 0; i <= steps; i++) {
           var val = minVal + (maxVal - minVal) * (i / steps);
           var y   = bottom - (h * i / steps);
-          var lbl = (val < 0 ? '−' : '') + '$' + (Math.abs(val) >= 1000 ? (Math.abs(val) / 1000).toFixed(0) + 'k' : Math.round(Math.abs(val)));
+          var abs = Math.abs(val);
+          var lbl = (val < 0 ? '-' : '') + '$' + (abs >= 1000 ? (abs / 1000).toFixed(0) + 'k' : Math.round(abs));
           ctx.fillText(lbl, Y_AXIS_W - 4, y + 3);
         }
       }
@@ -632,9 +662,11 @@
             borderColor: lineColor,
             backgroundColor: fillColor,
             fill: true,
-            tension: 0.45,
-            pointRadius: 0,        // no dots
-            pointHoverRadius: 5,
+            tension: 0.4,
+            pointRadius: 4,
+            pointHoverRadius: 7,
+            pointBackgroundColor: dotColor,
+            pointBorderColor: dotColor,
             borderWidth: 2.5,
           }],
         },
@@ -648,7 +680,7 @@
               callbacks: {
                 label: function (ctx) {
                   var v = ctx.raw;
-                  return ' ' + (v < 0 ? '−' : '') + formatCurrency(Math.abs(v));
+                  return ' ' + (v < 0 ? '-' : '+') + formatCurrency(Math.abs(v));
                 },
               },
             },
@@ -661,6 +693,128 @@
             y: {
               min: minVal,
               max: maxVal,
+              grid: { color: gridColor },
+              ticks: { display: false },
+            },
+          },
+          animation: {
+            onComplete: function () { drawYAxis(); },
+          },
+        },
+      });
+    },
+
+    // ── renderCreditScoreChart ────────────────────────────────────────────────
+
+    /**
+     * Renders a scrollable credit score line chart on the dashboard.
+     * @param {object[]} scores  Sorted ascending by monthKey
+     */
+    renderCreditScoreChart: function (scores) {
+      if (_creditChart) {
+        _creditChart.destroy();
+        _creditChart = null;
+      }
+
+      const canvas      = el('dash-credit-chart');
+      const innerEl     = el('dash-credit-inner');
+      const yAxisCanvas = el('dash-credit-yaxis');
+      if (!canvas || !innerEl || !yAxisCanvas) return;
+      if (!scores || scores.length === 0) return;
+
+      const isDark    = document.documentElement.getAttribute('data-theme') === 'dark';
+      const textColor = isDark ? '#94A3B8' : '#6B7280';
+      const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+
+      const Y_AXIS_W = 52;
+      const CHART_H  = 180;
+      const PT_WIDTH = 56;
+
+      const labels = scores.map(function (s) { return monthKeyToShort(s.monthKey); });
+      const data   = scores.map(function (s) { return s.score; });
+
+      // Color each point by score range
+      const pointColors = data.map(function (v) {
+        if (v >= 750) return '#10B981';
+        if (v >= 700) return '#F59E0B';
+        return '#EF4444';
+      });
+
+      // Y-axis: 580–850 range (typical FICO range)
+      const rawMin = Math.max(500, Math.min.apply(null, data) - 20);
+      const rawMax = Math.min(850, Math.max.apply(null, data) + 20);
+
+      const availW = (innerEl.parentElement ? innerEl.parentElement.offsetWidth : 0) || (window.innerWidth - Y_AXIS_W - 32);
+      const ptW    = Math.max(PT_WIDTH, Math.floor(availW / Math.min(12, labels.length)));
+      const chartW = Math.max(availW, labels.length * ptW);
+      canvas.width  = chartW;
+      canvas.height = CHART_H;
+      yAxisCanvas.width  = Y_AXIS_W;
+      yAxisCanvas.height = CHART_H;
+      yAxisCanvas.style.height = CHART_H + 'px';
+      innerEl.style.width  = chartW + 'px';
+      innerEl.style.height = CHART_H + 'px';
+
+      requestAnimationFrame(function () {
+        var sw = innerEl.parentElement;
+        if (sw) sw.scrollLeft = sw.scrollWidth;
+      });
+
+      function drawYAxis() {
+        var ctx = yAxisCanvas.getContext('2d');
+        ctx.clearRect(0, 0, Y_AXIS_W, CHART_H);
+        ctx.fillStyle = textColor;
+        ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.textAlign = 'right';
+        var steps = 4;
+        var top = 12, bottom = CHART_H - 24, h = bottom - top;
+        for (var i = 0; i <= steps; i++) {
+          var val = rawMin + (rawMax - rawMin) * (i / steps);
+          var y   = bottom - (h * i / steps);
+          ctx.fillText(Math.round(val), Y_AXIS_W - 4, y + 3);
+        }
+      }
+
+      _creditChart = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'FICO Score',
+            data: data,
+            borderColor: '#6C63FF',
+            backgroundColor: 'rgba(108,99,255,0.08)',
+            fill: true,
+            tension: 0.4,
+            pointRadius: 5,
+            pointHoverRadius: 8,
+            pointBackgroundColor: pointColors,
+            pointBorderColor: pointColors,
+            borderWidth: 2.5,
+          }],
+        },
+        options: {
+          responsive: false,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: function (ctx) {
+                  return ' FICO: ' + ctx.raw;
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              ticks: { color: textColor, maxRotation: 0, maxTicksLimit: 12 },
+            },
+            y: {
+              min: rawMin,
+              max: rawMax,
               grid: { color: gridColor },
               ticks: { display: false },
             },

@@ -157,12 +157,12 @@
           <span>Cumulative Net Saved</span>
           <span style="font-size:12px;color:var(--text-secondary);">Running total</span>
         </div>
-        <!-- Scrollable line chart: y-axis fixed, bars scroll -->
-        <div style="display:flex;align-items:stretch;height:160px;">
-          <canvas id="dash-cumulative-yaxis" style="flex-shrink:0;width:48px;height:160px;display:block;"></canvas>
+        <!-- Scrollable line chart: y-axis fixed, chart scrolls -->
+        <div style="display:flex;align-items:stretch;height:200px;">
+          <canvas id="dash-cumulative-yaxis" style="flex-shrink:0;width:52px;height:200px;display:block;"></canvas>
           <div style="flex:1;overflow-x:auto;-webkit-overflow-scrolling:touch;">
-            <div id="dash-cumulative-inner" style="position:relative;height:160px;min-width:100%;">
-              <canvas id="dash-cumulative-chart" style="display:block;height:160px;"></canvas>
+            <div id="dash-cumulative-inner" style="position:relative;height:200px;min-width:100%;">
+              <canvas id="dash-cumulative-chart" style="display:block;height:200px;"></canvas>
             </div>
           </div>
         </div>
@@ -183,6 +183,33 @@
           <div class="skeleton" style="height:56px;border-radius:8px;margin-bottom:8px;"></div>
           <div class="skeleton" style="height:56px;border-radius:8px;margin-bottom:8px;"></div>
           <div class="skeleton" style="height:56px;border-radius:8px;"></div>
+        </div>
+      </div>
+
+      <!-- 7. Credit Score -->
+      <div class="chart-card" id="credit-score-card" style="display:none;">
+        <div class="chart-card-title">
+          <span>Credit Score</span>
+          <span style="font-size:12px;color:var(--text-secondary);">FICO Score 8</span>
+        </div>
+        <div style="display:flex;align-items:stretch;height:180px;">
+          <canvas id="dash-credit-yaxis" style="flex-shrink:0;width:52px;height:180px;display:block;"></canvas>
+          <div style="flex:1;overflow-x:auto;-webkit-overflow-scrolling:touch;">
+            <div id="dash-credit-inner" style="position:relative;height:180px;min-width:100%;">
+              <canvas id="dash-credit-chart" style="display:block;height:180px;"></canvas>
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;">
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);">
+            <span style="width:10px;height:10px;border-radius:2px;background:#10B981;display:inline-block;"></span>Excellent (750+)
+          </span>
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);">
+            <span style="width:10px;height:10px;border-radius:2px;background:#F59E0B;display:inline-block;"></span>Good (700–749)
+          </span>
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text-secondary);">
+            <span style="width:10px;height:10px;border-radius:2px;background:#EF4444;display:inline-block;"></span>Fair (&lt;700)
+          </span>
         </div>
       </div>
 

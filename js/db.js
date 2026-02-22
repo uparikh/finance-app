@@ -18,7 +18,7 @@
   // ─── Constants ──────────────────────────────────────────────────────────────
 
   const DB_NAME    = 'FinanceAppDB';
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
 
   // ─── Internal State ─────────────────────────────────────────────────────────
 
@@ -433,6 +433,12 @@
         // ── meta store (tracks whether seeding has been done) ──────────────
         if (!db.objectStoreNames.contains('meta')) {
           db.createObjectStore('meta', { keyPath: 'key' });
+        }
+
+        // ── credit_scores store ────────────────────────────────────────────
+        // Stores FICO credit score snapshots keyed by monthKey (YYYY-MM)
+        if (!db.objectStoreNames.contains('credit_scores')) {
+          db.createObjectStore('credit_scores', { keyPath: 'monthKey' });
         }
 
         // Seed defaults inside the upgrade transaction
@@ -1067,6 +1073,47 @@
       } catch (err) {
         console.error('[FinanceDB] saveAccountBalance failed:', err);
         // Non-fatal — don't throw
+      }
+    },
+
+    /**
+     * Saves a credit score snapshot for a given month.
+     * @param {string} monthKey  e.g. "2024-03"
+     * @param {number} score     FICO score (300-850)
+     * @param {string} [source]  e.g. "discover"
+     * @returns {Promise<void>}
+     */
+    saveCreditScore: async function (monthKey, score, source) {
+      try {
+        const db    = await openDB();
+        const tx    = db.transaction('credit_scores', 'readwrite');
+        const store = tx.objectStore('credit_scores');
+        await _promisify(store.put({
+          monthKey:  monthKey,
+          score:     score,
+          source:    source || 'unknown',
+          savedAt:   new Date().toISOString(),
+        }));
+        console.log('[FinanceDB] Saved credit score', score, 'for', monthKey);
+      } catch (err) {
+        console.error('[FinanceDB] saveCreditScore failed:', err);
+        // Non-fatal
+      }
+    },
+
+    /**
+     * Returns all credit score snapshots sorted ascending by monthKey.
+     * @returns {Promise<object[]>}
+     */
+    getCreditScores: async function () {
+      try {
+        const all = await _getAll('credit_scores');
+        return (all || []).sort(function (a, b) {
+          return (a.monthKey || '').localeCompare(b.monthKey || '');
+        });
+      } catch (err) {
+        console.error('[FinanceDB] getCreditScores failed:', err);
+        return [];
       }
     },
 

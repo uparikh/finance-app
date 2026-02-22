@@ -92,19 +92,25 @@ function wireBottomNav() {
       if (!target) return;
 
       // Fix 3: Warn user if they navigate away from upload review state
+      // Only show warning when on the upload screen AND in review state
+      const currentScreenName = typeof getCurrentScreen === 'function' ? getCurrentScreen() : null;
       if (target !== 'upload' &&
+          currentScreenName === 'upload' &&
           typeof UploadScreen !== 'undefined' &&
           typeof UploadScreen.isInReviewState === 'function' &&
           UploadScreen.isInReviewState()) {
         const confirmed = window.confirm(
           '⚠️ Unsaved Transactions\n\n' +
-          'You have ' + (typeof pendingTransactions !== 'undefined' ? '' : 'unsaved ') +
-          'transactions that haven\'t been saved yet.\n\n' +
+          'You have unsaved transactions that haven\'t been saved yet.\n\n' +
           'Leaving now will discard them. Continue?'
         );
         if (!confirmed) return;
-        // User confirmed — discard pending transactions
-        UploadScreen.showState('idle');
+        // User confirmed — fully reset upload state so warning doesn't repeat
+        if (typeof UploadScreen.cancelReview === 'function') {
+          UploadScreen.cancelReview();
+        } else {
+          UploadScreen.showState('idle');
+        }
       }
 
       navigateTo(target); // defined in router.js

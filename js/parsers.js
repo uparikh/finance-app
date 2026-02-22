@@ -1069,20 +1069,26 @@ function parseDiscover(text, pages) {
     // Skip header/summary/boilerplate lines
     const skipPatterns = /^(trans\.?|date|description|amount|merchant|category|payments\s+and\s+credits|purchases|fees\s+and\s+interest|total\s+fees|total\s+interest|\d{4}\s+totals|year-to-date|interest\s+charge|annual\s+percentage|30\s+days|promo|type\s+of|purchases\s+\d|cash\s+advances|variable|previous\s+balance|new\s+balance|minimum|payment\s+due|cashback|rewards|earned|redeemed|see\s+details|open\s+to\s+close|page\s+\d|discover\.com|dial\s+711|po\s+box|carol\s+stream|hearing|mkq|26s|dit|apple\s+pay|continued\s+on|transactions\s+continued|fico|cardmember|udit\s+parikh|frisco|charlotte)/i;
 
-    let currentSection = 'purchases';
+    let currentSection = 'unknown'; // start unknown until we see a section header
     let inTransactionSection = false;
 
     for (const rawLine of lines) {
       const line = rawLine.trim();
       if (!line) continue;
 
-      // Detect section changes
-      if (/^PAYMENTS\s+AND\s+CREDITS$/i.test(line) || /^DATE\s+PAYMENTS\s+AND\s+CREDITS/i.test(line)) {
+      // Detect section changes — check BEFORE skipPatterns
+      if (/payments\s+and\s+credits/i.test(line) && /date/i.test(line)) {
         currentSection = 'payments';
         inTransactionSection = true;
         continue;
       }
-      if (/^DATE\s+PURCHASES/i.test(line) || /^PURCHASES\s*$/i.test(line)) {
+      if (/^PAYMENTS\s+AND\s+CREDITS$/i.test(line)) {
+        currentSection = 'payments';
+        inTransactionSection = true;
+        continue;
+      }
+      if (/^DATE\s+PURCHASES/i.test(line) || /^PURCHASES\s*$/i.test(line) ||
+          (/purchases/i.test(line) && /merchant\s+category/i.test(line))) {
         currentSection = 'purchases';
         inTransactionSection = true;
         continue;
@@ -1105,7 +1111,9 @@ function parseDiscover(text, pages) {
         if (!date) continue;
 
         // Purchases are positive in PDF → store as negative (expense)
-        const storedAmount = (currentSection === 'payments') ? rawAmount : -rawAmount;
+        // Pattern A only matches lines with a merchant category — always purchases
+        // Exception: if we're explicitly in the payments section
+        const storedAmount = (currentSection === 'payments') ? rawAmount : -Math.abs(rawAmount);
 
         result.transactions.push(buildTransaction({
           date, description: desc, amount: storedAmount,
@@ -1160,6 +1168,17 @@ function parseDiscover(text, pages) {
     }
 
     result.endingBalance = extractEndingBalance(text);
+
+    // ── Extract FICO credit score ──────────────────────────────────────────
+    // Format: "768\nAS OF 03/04/24" or "FICO Score 8 ... 768"
+    const ficoMatch = text.match(/\b([6-8]\d{2})\s*\n?\s*AS\s+OF\s+(\d{2}\/\d{2}\/\d{2,4})/i) ||
+                      text.match(/fico[^\n]*?(\d{3})\s*\n/i);
+    if (ficoMatch) {
+      result.creditScore = parseInt(ficoMatch[1], 10);
+      result.creditScoreDate = ficoMatch[2] || null;
+      console.log('[Parser] Discover: credit score', result.creditScore, 'as of', result.creditScoreDate);
+    }
+
     console.log(`[Parser] Discover: parsed ${result.parsedCount} transactions, ending balance: ${result.endingBalance}`);
   } catch (err) {
     console.error('[Parser] parseDiscover() fatal error:', err);
