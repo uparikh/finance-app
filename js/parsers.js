@@ -654,8 +654,10 @@ function buildTransaction(fields) {
 function parseAlly(text, pages) {
   console.log('[Parser] parseAlly() starting...');
 
-  // Determine account type from text
-  const isChecking = /checking/i.test(text);
+  // Determine account type from text.
+  // Ally combined statements contain both "Spending" (checking) and "Savings" accounts.
+  // We detect per-account sections as we scan, defaulting to savings.
+  const isChecking = /checking|spending\s+account|spending\s+money/i.test(text);
   const accountType = isChecking ? 'checking' : 'savings';
   const accountId = isChecking ? 'ally-checking' : 'ally-savings';
 
@@ -670,16 +672,22 @@ function parseAlly(text, pages) {
     result.rawLineCount = lines.length;
 
     // ── Ally actual PDF format (from real statement):
+    //
     // Date   Description   Credits   Debits   Balance
-    // 07/22/2020   eCheck Deposit   $500.08   -$0.00   $500.08
+    // 12/16/2025   ACH Withdrawal $0.00   -$100.00   $3,314.27
+    // FID BKG SVC LLC MONEYLINE          ← continuation line 1 (real payee)
+    // MONEYLINE                          ← continuation line 2 (short label, skip)
     //
-    // Pattern: MM/DD/YYYY  DESCRIPTION  $CREDIT  $DEBIT  $BALANCE
-    // Credits column = money coming in (positive)
-    // Debits column  = money going out (negative, shown as -$0.00 when zero)
+    // 12/15/2025   Direct Deposit $3,390.60   -$0.00   $3,414.27
+    // VENMO CASHOUT                      ← continuation line 1 (real payee)
+    // CASHOUT                            ← continuation line 2 (short label, skip)
     //
-    // We try two regex patterns:
-    //   Pattern A: date  desc  $credit  $debit  $balance  (5 columns)
-    //   Pattern B: date  desc  $amount  $balance           (4 columns, no separate credit/debit)
+    // Generic descriptions that need a look-ahead to find the real payee:
+    //   "ACH Withdrawal", "ACH Credit", "Direct Deposit",
+    //   "WEB Funds Transfer", "eCheck Deposit"
+    //
+    // Pattern A: MM/DD/YYYY  description  $credit  $debit  $balance  (5 columns)
+    // Pattern B: MM/DD/YYYY  description  $amount  $balance           (4 columns)
 
     // Strip $ signs and parse a dollar amount string like "$1,234.56" or "-$0.00"
     function parseDollar(str) {
@@ -693,14 +701,35 @@ function parseAlly(text, pages) {
     // Pattern B: MM/DD/YYYY  description  $amount  $balance (no separate credit/debit)
     const txRegexB = /^(\d{2}\/\d{2}\/\d{4})\s+(.+?)\s+([-]?\$?[\d,]+\.\d{2})\s+([-]?\$?[\d,]+\.\d{2})\s*$/;
 
+    // Generic description types that carry no merchant info on their own.
+    // When matched, we look ahead to the next non-empty, non-date line for the real payee.
+    const GENERIC_DESC = /^(ach\s+withdrawal|ach\s+credit|direct\s+deposit|web\s+funds\s+transfer|echeck\s+deposit|online\s+transfer|wire\s+transfer|bill\s+payment|recurring\s+payment|preauthorized\s+debit|electronic\s+payment)\b/i;
+
     // Skip header/summary lines
     const skipPatterns = /^(date|description|credits|debits|balance|transaction|account|summary|total|opening|closing|beginning|ending|statement|period|page|continued|activity|interest|overdraft|annual|average|days\s+in)/i;
 
+    // Track which Ally sub-account section we're currently in
+    // (combined statements have both Spending and Savings sections)
+    let currentAccountId   = accountId;
+    let currentAccountType = accountType;
     let inTransactionSection = false;
 
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
+    // Use index-based loop so we can peek ahead for continuation lines
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
       if (!line) continue;
+
+      // ── Detect sub-account section changes in combined statements ──────────
+      if (/^\s*Spending\s+Money\s*$/i.test(line) || /spending\s+account/i.test(line)) {
+        currentAccountId   = 'ally-checking';
+        currentAccountType = 'checking';
+        continue;
+      }
+      if (/^\s*Main\s+Savings\s*$/i.test(line) || /savings\s+account/i.test(line)) {
+        currentAccountId   = 'ally-savings';
+        currentAccountType = 'savings';
+        continue;
+      }
 
       // Detect start of transaction activity section
       if (/^\s*Activity\s*$/i.test(line) || /transaction\s+history|account\s+activity|transaction\s+detail/i.test(line)) {
@@ -715,23 +744,21 @@ function parseAlly(text, pages) {
       // Skip lines that are clearly balance/summary rows
       if (/beginning\s+balance|ending\s+balance/i.test(line)) continue;
 
-      // Try Pattern A first (5 columns: date desc credit debit balance)
+      // ── Try Pattern A first (5 columns: date desc credit debit balance) ────
       let match = line.match(txRegexA);
       if (match) {
-        const [, dateStr, desc, creditStr, debitStr] = match;
+        const [, dateStr, rawDesc, creditStr, debitStr] = match;
         const credit = parseDollar(creditStr);
         const debit  = parseDollar(debitStr);
 
         // Net amount: credit is positive (income), debit is negative (expense)
-        // When credit > 0 and debit == 0: it's a deposit
-        // When debit > 0 and credit == 0: it's a withdrawal
         let amount;
         if (!isNaN(credit) && credit > 0 && (isNaN(debit) || debit === 0)) {
-          amount = credit;   // deposit
+          amount = credit;
         } else if (!isNaN(debit) && debit > 0 && (isNaN(credit) || credit === 0)) {
-          amount = -debit;   // withdrawal
+          amount = -debit;
         } else if (!isNaN(credit) && !isNaN(debit)) {
-          amount = credit - debit;  // net
+          amount = credit - debit;
         } else {
           result.parseErrors.push(`Ally: could not determine amount: ${line}`);
           continue;
@@ -740,22 +767,76 @@ function parseAlly(text, pages) {
         const date = parseDate_MMDDYYYY(dateStr);
         if (!date) { result.parseErrors.push(`Ally: invalid date: ${line}`); continue; }
 
-        result.transactions.push(buildTransaction({ date, description: desc, amount, accountId, accountType }));
+        // ── Look-ahead: if description is generic, use the next non-empty line ──
+        let desc = rawDesc;
+        if (GENERIC_DESC.test(rawDesc.trim())) {
+          // Find the next non-empty line that doesn't look like a transaction date
+          // or a known skip pattern — that's the real payee continuation line.
+          for (let j = i + 1; j < lines.length && j <= i + 3; j++) {
+            const next = lines[j].trim();
+            if (!next) continue;
+            // Stop if we hit another transaction date line or a section header
+            if (/^\d{2}\/\d{2}\/\d{4}/.test(next)) break;
+            if (skipPatterns.test(next)) break;
+            if (/beginning\s+balance|ending\s+balance/i.test(next)) break;
+            // Use this line as the real description; skip it in the outer loop
+            desc = next;
+            i = j; // advance outer index past the continuation line
+            // Also skip a second continuation line if it's a short duplicate
+            // (e.g. "MONEYLINE" after "FID BKG SVC LLC MONEYLINE")
+            if (j + 1 < lines.length) {
+              const next2 = lines[j + 1].trim();
+              if (next2 && next2.length <= 20 && desc.toUpperCase().includes(next2.toUpperCase())) {
+                i = j + 1;
+              }
+            }
+            break;
+          }
+        }
+
+        result.transactions.push(buildTransaction({
+          date, description: desc, amount,
+          accountId: currentAccountId, accountType: currentAccountType,
+        }));
         result.parsedCount++;
         continue;
       }
 
-      // Try Pattern B (4 columns: date desc amount balance)
+      // ── Try Pattern B (4 columns: date desc amount balance) ─────────────────
       match = line.match(txRegexB);
       if (match) {
-        const [, dateStr, desc, amountStr] = match;
+        const [, dateStr, rawDesc, amountStr] = match;
         const rawAmount = parseDollar(amountStr);
         if (isNaN(rawAmount)) { result.parseErrors.push(`Ally: invalid amount: ${line}`); continue; }
 
         const date = parseDate_MMDDYYYY(dateStr);
         if (!date) { result.parseErrors.push(`Ally: invalid date: ${line}`); continue; }
 
-        result.transactions.push(buildTransaction({ date, description: desc, amount: rawAmount, accountId, accountType }));
+        // Look-ahead for generic descriptions (same logic as Pattern A)
+        let desc = rawDesc;
+        if (GENERIC_DESC.test(rawDesc.trim())) {
+          for (let j = i + 1; j < lines.length && j <= i + 3; j++) {
+            const next = lines[j].trim();
+            if (!next) continue;
+            if (/^\d{2}\/\d{2}\/\d{4}/.test(next)) break;
+            if (skipPatterns.test(next)) break;
+            if (/beginning\s+balance|ending\s+balance/i.test(next)) break;
+            desc = next;
+            i = j;
+            if (j + 1 < lines.length) {
+              const next2 = lines[j + 1].trim();
+              if (next2 && next2.length <= 20 && desc.toUpperCase().includes(next2.toUpperCase())) {
+                i = j + 1;
+              }
+            }
+            break;
+          }
+        }
+
+        result.transactions.push(buildTransaction({
+          date, description: desc, amount: rawAmount,
+          accountId: currentAccountId, accountType: currentAccountType,
+        }));
         result.parsedCount++;
         continue;
       }
