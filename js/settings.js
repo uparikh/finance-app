@@ -204,6 +204,22 @@
       }
 
       await SettingsScreen.loadStorageStats();
+
+      // ── Version note ────────────────────────────────────────────────────────
+      // Read version from manifest.json (single source of truth) and surface it
+      // in the About card.  Falls back to the inline default if the fetch fails.
+      (function () {
+        const el = document.getElementById('settings-version-text');
+        if (!el) return;
+        fetch('manifest.json')
+          .then(function (r) { return r.json(); })
+          .then(function (m) {
+            if (m && m.version) {
+              el.textContent = 'v' + m.version;
+            }
+          })
+          .catch(function () { /* keep inline fallback */ });
+      }());
     },
 
     // ── Categories ─────────────────────────────────────────────────────────

@@ -757,6 +757,10 @@
       return;
     }
 
+    // Disable save button to prevent double-tap
+    const sheetSaveBtn = el('edit-sheet-save');
+    if (sheetSaveBtn) { sheetSaveBtn.disabled = true; }
+
     const nameInput   = el('edit-merchant-name');
     const amountInput = el('edit-amount');
     const dateInput   = el('edit-date');
@@ -778,6 +782,7 @@
         amountInput.style.borderColor = 'var(--danger)';
         setTimeout(function () { amountInput.style.borderColor = ''; }, 2000);
       }
+      if (sheetSaveBtn) { sheetSaveBtn.disabled = false; }
       return;
     }
 
@@ -822,6 +827,9 @@
     // Re-render the list
     _renderFilteredList();
     updateSaveButton();
+
+    // Re-enable save button now that sheet is closed
+    if (sheetSaveBtn) { sheetSaveBtn.disabled = false; }
 
     // ── Merchant rule: save category for future imports ───────────────────
     if (merchantName && categoryId && _origCatId !== categoryId) {
@@ -936,11 +944,21 @@
       // Continue with save even if duplicate check fails
     }
 
-    const saveBtn = el('save-btn');
-    if (saveBtn) {
-      saveBtn.disabled = true;
-      saveBtn.textContent = 'Saving…';
+    // Disable both save buttons while saving
+    const saveBtn    = el('save-btn');
+    const saveBarBtn = el('save-bar-save');
+    function _setSaving(isSaving) {
+      if (saveBtn) {
+        saveBtn.disabled = isSaving;
+        saveBtn.textContent = isSaving ? 'Saving…' : ('Save ' + pendingTransactions.length + ' Transaction' + (pendingTransactions.length !== 1 ? 's' : ''));
+      }
+      if (saveBarBtn) {
+        saveBarBtn.disabled = isSaving;
+        saveBarBtn.textContent = isSaving ? 'Saving…' : ('Save ' + pendingTransactions.length + ' Transaction' + (pendingTransactions.length !== 1 ? 's' : ''));
+      }
     }
+
+    _setSaving(true);
 
     try {
       await FinanceDB.addTransactions(pendingTransactions);
@@ -996,10 +1014,9 @@
     } catch (err) {
       console.error('[UploadScreen] saveAllTransactions failed:', err);
       showToast('❌ Save failed. Please try again.');
-      if (saveBtn) {
-        saveBtn.disabled = false;
-        updateSaveButton();
-      }
+    } finally {
+      // Always re-enable buttons — even if save succeeded (navigating away) or failed
+      _setSaving(false);
     }
   }
 
@@ -1029,7 +1046,57 @@
   // ─── Recent Uploads ──────────────────────────────────────────────────────────
 
   /**
+   * Deletes all transactions for a given monthKey (and optionally a specific accountId),
+   * then reloads the recent uploads list.
+   * @param {string} monthKey  e.g. "2026-02"
+   * @param {string} accountId  e.g. "ally-checking" (or null to delete all accounts for that month)
+   * @param {string} displayLabel  Human-readable label for the confirm dialog
+   */
+  async function deleteUpload(monthKey, accountId, displayLabel) {
+    const msg = accountId
+      ? 'Delete all "' + displayLabel + '" transactions?\n\nThis will permanently remove all ' +
+        'transactions from this account for ' + displayLabel + '.\n\nThis cannot be undone.'
+      : 'Delete all transactions for ' + displayLabel + '?\n\nThis cannot be undone.';
+
+    if (!window.confirm(msg)) return;
+
+    try {
+      // Get all transactions for this month
+      const txns = await FinanceDB.getTransactionsByMonth(monthKey);
+
+      // Filter to just the account if specified
+      const toDelete = accountId
+        ? txns.filter(function (t) { return t.accountId === accountId; })
+        : txns;
+
+      if (toDelete.length === 0) {
+        showToast('No transactions found to delete.');
+        return;
+      }
+
+      // Delete each transaction
+      for (const txn of toDelete) {
+        await FinanceDB.deleteTransaction(txn.id);
+      }
+
+      // Recompute summary for this month
+      await FinanceDB.recomputeMonthlySummary(monthKey);
+
+      showToast('🗑️ Deleted ' + toDelete.length + ' transaction' + (toDelete.length !== 1 ? 's' : '') + '.');
+
+      // Reload the list
+      await loadRecentUploads();
+
+    } catch (err) {
+      console.error('[UploadScreen] deleteUpload failed:', err);
+      showToast('❌ Delete failed. Please try again.');
+    }
+  }
+
+  /**
    * Loads recent upload history from DB and renders it in the idle state.
+   * Shows ALL uploads (grouped by month+account), most recent first.
+   * Each item has View and Delete buttons.
    */
   async function loadRecentUploads() {
     const listEl = el('recent-uploads-list');
@@ -1046,8 +1113,8 @@
         return;
       }
 
-      // Show last 5, most recent first
-      const recent = summaries.slice().reverse().slice(0, 5);
+      // Show most recent first (all of them)
+      const sorted = summaries.slice().reverse();
 
       // Get accounts for display names
       let accounts = [];
@@ -1060,37 +1127,36 @@
 
       const fragment = document.createDocumentFragment();
 
-      recent.forEach(function (summary) {
+      sorted.forEach(function (summary) {
         // Format month label
         let monthLabel = summary.monthKey;
         try {
           const [y, m] = summary.monthKey.split('-').map(Number);
           const d = new Date(y, m - 1, 1);
-          monthLabel = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+          monthLabel = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
         } catch (e) { /* keep raw */ }
 
-        // Determine account name from breakdown
-        let accountName = 'Statement';
+        // Collect accounts present in this month's breakdown
         const accountIds = Object.keys(summary.accountBreakdown || {});
-        if (accountIds.length > 0 && accountMap[accountIds[0]]) {
-          accountName = accountMap[accountIds[0]].name;
+
+        if (accountIds.length === 0) {
+          // No account breakdown — show as single row
+          _appendUploadRow(fragment, summary, null, 'Statement', monthLabel, accountMap);
+        } else if (accountIds.length === 1) {
+          // Single account — show as one row
+          const accName = accountMap[accountIds[0]] ? accountMap[accountIds[0]].name : accountIds[0];
+          _appendUploadRow(fragment, summary, accountIds[0], accName, monthLabel, accountMap);
+        } else {
+          // Multiple accounts — show one row per account
+          accountIds.forEach(function (accId) {
+            const accName = accountMap[accId] ? accountMap[accId].name : accId;
+            // Count transactions for this specific account
+            const accTxnCount = summary.accountBreakdown[accId]
+              ? '~' + Math.round(summary.transactionCount * (summary.accountBreakdown[accId] / (summary.totalIncome + summary.totalExpenses + 0.01)))
+              : '';
+            _appendUploadRow(fragment, summary, accId, accName, monthLabel, accountMap);
+          });
         }
-
-        const item = document.createElement('div');
-        item.className = 'recent-upload-item';
-        item.innerHTML =
-          '<div class="recent-upload-icon">📄</div>' +
-          '<div class="recent-upload-info">' +
-            '<div class="recent-upload-name">' + _escapeHtml(accountName) + '</div>' +
-            '<div class="recent-upload-meta">' +
-              monthLabel + ' · ' + summary.transactionCount + ' transaction' +
-              (summary.transactionCount !== 1 ? 's' : '') +
-            '</div>' +
-          '</div>' +
-          '<button class="recent-upload-view" data-month="' + summary.monthKey + '" ' +
-          'aria-label="View ' + monthLabel + ' transactions">View</button>';
-
-        fragment.appendChild(item);
       });
 
       listEl.innerHTML = '';
@@ -1100,11 +1166,20 @@
       listEl.querySelectorAll('.recent-upload-view').forEach(function (btn) {
         btn.addEventListener('click', function () {
           const monthKey = btn.getAttribute('data-month');
-          // Navigate to transactions screen with the month pre-selected
           navigateTo('transactions', monthKey ? { monthKey: monthKey } : {});
           if (typeof onScreenActivated === 'function') {
             onScreenActivated('transactions', monthKey ? { monthKey: monthKey } : {});
           }
+        });
+      });
+
+      // Wire up Delete buttons
+      listEl.querySelectorAll('.recent-upload-delete').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const monthKey  = btn.getAttribute('data-month');
+          const accountId = btn.getAttribute('data-account') || null;
+          const label     = btn.getAttribute('data-label') || monthKey;
+          deleteUpload(monthKey, accountId, label);
         });
       });
 
@@ -1113,6 +1188,44 @@
       listEl.innerHTML =
         '<p style="font-size:13px;color:var(--text-secondary);padding:8px 0;">Could not load recent uploads.</p>';
     }
+  }
+
+  /**
+   * Appends a single upload row to a document fragment.
+   * @private
+   */
+  function _appendUploadRow(fragment, summary, accountId, accountName, monthLabel, accountMap) {
+    const txnCount = summary.transactionCount || 0;
+    const label    = _escapeHtml(accountName) + ' — ' + _escapeHtml(monthLabel);
+
+    const item = document.createElement('div');
+    item.className = 'recent-upload-item';
+    item.style.cssText = 'display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:0.5px solid var(--separator);';
+    item.innerHTML =
+      '<div style="width:36px;height:36px;border-radius:10px;background:var(--bg-secondary);' +
+      'display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">📄</div>' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:14px;font-weight:600;color:var(--text-primary);' +
+        'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + _escapeHtml(accountName) + '</div>' +
+        '<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">' +
+          _escapeHtml(monthLabel) + ' · ' + txnCount + ' txn' + (txnCount !== 1 ? 's' : '') +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-shrink:0;">' +
+        '<button class="recent-upload-view" data-month="' + summary.monthKey + '" ' +
+        'style="font-size:12px;padding:5px 10px;border-radius:8px;background:var(--accent-light);' +
+        'color:var(--accent);border:none;font-weight:600;cursor:pointer;" ' +
+        'aria-label="View ' + label + '">View</button>' +
+        '<button class="recent-upload-delete" ' +
+        'data-month="' + summary.monthKey + '" ' +
+        'data-account="' + (accountId || '') + '" ' +
+        'data-label="' + _escapeHtml(accountName + ' — ' + monthLabel) + '" ' +
+        'style="font-size:12px;padding:5px 10px;border-radius:8px;background:rgba(239,68,68,0.1);' +
+        'color:#EF4444;border:none;font-weight:600;cursor:pointer;" ' +
+        'aria-label="Delete ' + label + '">Delete</button>' +
+      '</div>';
+
+    fragment.appendChild(item);
   }
 
   // ─── Filter Buttons ──────────────────────────────────────────────────────────
@@ -1339,10 +1452,13 @@
       }
     });
 
-    // ── Wire up fixed save bar (Fix 1) ──────────────────────────────────────
+    // ── Wire up fixed save bar — always re-wire even if already injected ────
     const saveBarSave   = el('save-bar-save');
     const saveBarCancel = el('save-bar-cancel');
-    if (saveBarSave)   saveBarSave.onclick   = saveAllTransactions;
+    if (saveBarSave) {
+      saveBarSave.onclick = saveAllTransactions;
+      saveBarSave.disabled = false;
+    }
     if (saveBarCancel) saveBarCancel.onclick = function () {
       pendingTransactions = [];
       currentParseResult = null;

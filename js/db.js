@@ -806,6 +806,13 @@
      * Saves or updates a user-defined merchant rule.
      * If a rule for this merchant already exists, updates it.
      * Otherwise creates a new rule.
+     *
+     * Also saves a "brand prefix" rule using the first meaningful word of the
+     * merchant name (≥3 chars, not a stop-word) so that variants of the same
+     * brand are auto-categorized on future imports.
+     * e.g. categorizing "Mod Long" → food also saves "mod" → food, so
+     * "Mod Pizza", "Mod Dtla", etc. are auto-categorized next time.
+     *
      * @param {string} merchantName  Display name of the merchant
      * @param {string} categoryId    Category to assign
      * @returns {Promise<void>}
@@ -815,7 +822,7 @@
         const pattern = merchantName.toLowerCase().trim();
         if (!pattern) return;
 
-        // Check if a user-defined rule already exists for this pattern
+        // ── Save exact-name rule ──────────────────────────────────────────
         const existing = _rulesCache.find(function (r) {
           return r.pattern === pattern && r.isUserDefined;
         });
@@ -830,6 +837,50 @@
             isUserDefined: true,
             matchCount:    0,
           });
+        }
+
+        // ── Save brand-prefix rule (first meaningful word) ────────────────
+        // Extract the first word that is ≥3 chars and not a generic stop-word.
+        // This lets "Mod Long", "Mod Pizza", "Mod Dtla" all match "mod".
+        const STOP_WORDS = new Set([
+          'the', 'and', 'for', 'from', 'with', 'inc', 'llc', 'ltd', 'co',
+          'corp', 'store', 'shop', 'market', 'online', 'pay', 'payment',
+          'purchase', 'debit', 'credit', 'card', 'pos', 'ach', 'fee',
+        ]);
+
+        const words = pattern.split(/\s+/);
+        const brandWord = words.find(function (w) {
+          return w.length >= 3 && !STOP_WORDS.has(w) && /^[a-z]/.test(w);
+        });
+
+        if (brandWord && brandWord !== pattern) {
+          // Only save prefix rule if it doesn't already exist as a default rule
+          // (to avoid overriding e.g. "amazon" → shopping with a user's one-off)
+          const prefixExists = _rulesCache.find(function (r) {
+            return r.pattern === brandWord;
+          });
+
+          if (!prefixExists) {
+            try {
+              await FinanceDB.addMerchantRule({
+                pattern:       brandWord,
+                categoryId:    categoryId,
+                merchantName:  merchantName,  // keep original name for display
+                isUserDefined: true,
+                matchCount:    0,
+              });
+              console.log('[FinanceDB] Saved brand-prefix rule:', brandWord, '→', categoryId);
+            } catch (prefixErr) {
+              // Duplicate pattern constraint — already exists, update it instead
+              const dupRule = _rulesCache.find(function (r) { return r.pattern === brandWord; });
+              if (dupRule) {
+                await FinanceDB.updateMerchantRule(dupRule.id, { categoryId: categoryId });
+              }
+            }
+          } else if (prefixExists.categoryId !== categoryId && prefixExists.isUserDefined) {
+            // Update existing user-defined prefix rule to new category
+            await FinanceDB.updateMerchantRule(prefixExists.id, { categoryId: categoryId });
+          }
         }
       } catch (err) {
         console.error('[FinanceDB] saveMerchantCategoryRule failed:', err);

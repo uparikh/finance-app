@@ -152,10 +152,12 @@
       </div>
 
       <!-- 5. Cumulative Net Saved -->
-      <div class="chart-card" id="cumulative-card" style="display:none;">
+      <div class="chart-card" id="cumulative-card" style="display:none;cursor:pointer;"
+           onclick="DashboardScreen.openCumulativeDetail()" role="button" tabindex="0"
+           aria-label="View cumulative net saved detail">
         <div class="chart-card-title">
           <span>Cumulative Net Saved</span>
-          <span style="font-size:12px;color:var(--text-secondary);">Running total</span>
+          <span style="font-size:12px;color:var(--accent);font-weight:600;">Tap for detail →</span>
         </div>
         <!-- Scrollable line chart: y-axis fixed, chart scrolls -->
         <div style="display:flex;align-items:stretch;height:200px;">
@@ -216,5 +218,120 @@
     </div><!-- /#dashboard-data -->
 
   </div><!-- /.screen-content -->
+
+  <!-- ── Cumulative Net Saved Detail Overlay ──────────────────────────────────
+       Full-screen Google Stocks-style drill-down. Injected over the dashboard.
+       Shown/hidden by DashboardScreen.openCumulativeDetail() / closeCumulativeDetail()
+  ─────────────────────────────────────────────────────────────────────────── -->
+  <div id="cumulative-detail-overlay" style="
+    position: absolute;
+    inset: 0;
+    background: var(--bg-primary);
+    z-index: 30;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  ">
+    <!-- Header -->
+    <header style="
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 16px;
+      padding-top: calc(12px + env(safe-area-inset-top));
+      border-bottom: 0.5px solid var(--separator);
+      background: var(--bg-primary);
+      flex-shrink: 0;
+    ">
+      <button id="cumulative-detail-back" class="btn-icon" aria-label="Back to dashboard"
+              style="font-size:20px;padding:4px 8px;margin-right:4px;">←</button>
+      <div style="flex:1;">
+        <div style="font-size:17px;font-weight:700;color:var(--text-primary);">Net Saved</div>
+        <div style="font-size:12px;color:var(--text-secondary);">Cumulative running total</div>
+      </div>
+    </header>
+
+    <!-- Scrollable content -->
+    <div style="flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:calc(80px + env(safe-area-inset-bottom));">
+
+      <!-- Hero value + change -->
+      <div style="padding:20px 20px 8px;">
+        <div id="cumdet-hero-value" style="font-size:42px;font-weight:800;color:var(--text-primary);line-height:1;letter-spacing:-1px;">—</div>
+        <div id="cumdet-hero-change" style="font-size:15px;font-weight:600;margin-top:6px;color:var(--text-secondary);">—</div>
+        <div id="cumdet-hero-range" style="font-size:12px;color:var(--text-secondary);margin-top:2px;opacity:0.7;">—</div>
+      </div>
+
+      <!-- Time range selector -->
+      <div style="padding:0 16px 12px;">
+        <div class="segmented-control" id="cumdet-range-selector" role="group" aria-label="Time range"
+             style="display:flex;gap:4px;background:var(--bg-secondary);border-radius:10px;padding:3px;">
+          <button class="segmented-btn" data-range="3"  onclick="DashboardScreen.setCumulativeRange(3)"  aria-label="3 months">3M</button>
+          <button class="segmented-btn" data-range="6"  onclick="DashboardScreen.setCumulativeRange(6)"  aria-label="6 months">6M</button>
+          <button class="segmented-btn active" data-range="12" onclick="DashboardScreen.setCumulativeRange(12)" aria-label="12 months">1Y</button>
+          <button class="segmented-btn" data-range="0"  onclick="DashboardScreen.setCumulativeRange(0)"  aria-label="All time">All</button>
+        </div>
+      </div>
+
+      <!-- Chart area -->
+      <div style="padding:0 0 8px;position:relative;">
+        <div style="display:flex;align-items:stretch;height:260px;">
+          <canvas id="cumdet-yaxis" style="flex-shrink:0;width:56px;height:260px;display:block;"></canvas>
+          <div style="flex:1;overflow:hidden;position:relative;">
+            <canvas id="cumdet-chart" style="display:block;width:100%;height:260px;"></canvas>
+          </div>
+        </div>
+        <!-- Crosshair tooltip (positioned absolutely) -->
+        <div id="cumdet-tooltip" style="
+          position:absolute;top:8px;left:64px;
+          background:var(--bg-secondary);
+          border:1px solid var(--border);
+          border-radius:8px;
+          padding:6px 10px;
+          font-size:12px;
+          color:var(--text-primary);
+          pointer-events:none;
+          display:none;
+          z-index:5;
+          box-shadow:0 2px 8px rgba(0,0,0,0.15);
+          white-space:nowrap;
+        "></div>
+      </div>
+
+      <!-- Stats grid -->
+      <div style="padding:16px 16px 0;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="chart-card" style="margin:0;padding:14px 16px;">
+            <div style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Total Saved</div>
+            <div id="cumdet-stat-total" style="font-size:20px;font-weight:700;color:var(--text-primary);">—</div>
+          </div>
+          <div class="chart-card" style="margin:0;padding:14px 16px;">
+            <div style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Avg / Month</div>
+            <div id="cumdet-stat-avg" style="font-size:20px;font-weight:700;color:var(--text-primary);">—</div>
+          </div>
+          <div class="chart-card" style="margin:0;padding:14px 16px;">
+            <div style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Best Month</div>
+            <div id="cumdet-stat-best" style="font-size:16px;font-weight:700;color:#10B981;">—</div>
+            <div id="cumdet-stat-best-label" style="font-size:11px;color:var(--text-secondary);margin-top:2px;">—</div>
+          </div>
+          <div class="chart-card" style="margin:0;padding:14px 16px;">
+            <div style="font-size:11px;color:var(--text-secondary);font-weight:500;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Worst Month</div>
+            <div id="cumdet-stat-worst" style="font-size:16px;font-weight:700;color:#EF4444;">—</div>
+            <div id="cumdet-stat-worst-label" style="font-size:11px;color:var(--text-secondary);margin-top:2px;">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Monthly breakdown list -->
+      <div style="padding:20px 16px 0;">
+        <div style="font-size:14px;font-weight:700;color:var(--text-primary);margin-bottom:12px;">Monthly Breakdown</div>
+        <div id="cumdet-monthly-list" style="display:flex;flex-direction:column;gap:8px;">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+    </div><!-- /scrollable content -->
+  </div><!-- /#cumulative-detail-overlay -->
 
 </div><!-- /#screen-dashboard -->

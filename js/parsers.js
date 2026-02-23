@@ -1197,13 +1197,62 @@ function parseDiscover(text, pages) {
     result.endingBalance = extractEndingBalance(text);
 
     // ── Extract FICO credit score ──────────────────────────────────────────
-    // Format: "768\nAS OF 03/04/24" or "FICO Score 8 ... 768"
-    const ficoMatch = text.match(/\b([6-8]\d{2})\s*\n?\s*AS\s+OF\s+(\d{2}\/\d{2}\/\d{2,4})/i) ||
-                      text.match(/fico[^\n]*?(\d{3})\s*\n/i);
-    if (ficoMatch) {
-      result.creditScore = parseInt(ficoMatch[1], 10);
-      result.creditScoreDate = ficoMatch[2] || null;
+    // Discover statements include a FICO Score 8 section.
+    // Possible formats (vary by statement version):
+    //   "768\nAS OF 03/04/24"
+    //   "FICO® Score 8\n768"
+    //   "Your FICO Score 8 is 768"
+    //   "Credit Score\n768\nAs of Feb 2026"
+    //   "768 as of 03/04/2024"
+    //   Score range: 300–850 (we accept 300–850)
+    let ficoScore = null;
+    let ficoDate  = null;
+
+    // Pattern 1: score followed by "AS OF date" (possibly across lines)
+    const p1 = text.match(/\b([3-8]\d{2})\s*[\n\r]+\s*AS\s+OF\s+([\w\/\s,]+?)(?:\n|$)/i);
+    if (p1) { ficoScore = parseInt(p1[1], 10); ficoDate = p1[2].trim(); }
+
+    // Pattern 2: "Your FICO Score 8 is NNN"
+    if (!ficoScore) {
+      const p2 = text.match(/fico[^\n]{0,30}?(?:score[^\n]{0,20}?)?(?:is\s+)?([3-8]\d{2})\b/i);
+      if (p2) { ficoScore = parseInt(p2[1], 10); }
+    }
+
+    // Pattern 3: "FICO Score 8\nNNN" or "FICO® Score\nNNN"
+    if (!ficoScore) {
+      const p3 = text.match(/fico[^\n]{0,30}\n\s*([3-8]\d{2})\b/i);
+      if (p3) { ficoScore = parseInt(p3[1], 10); }
+    }
+
+    // Pattern 4: score on its own line immediately preceded by "Credit Score" or "FICO"
+    if (!ficoScore) {
+      const p4 = text.match(/(?:credit\s+score|fico)[^\n]*\n[^\n]*\n\s*([3-8]\d{2})\b/i);
+      if (p4) { ficoScore = parseInt(p4[1], 10); }
+    }
+
+    // Pattern 5: "NNN as of MM/DD/YY" anywhere in text
+    if (!ficoScore) {
+      const p5 = text.match(/\b([3-8]\d{2})\s+as\s+of\s+(\d{2}\/\d{2}\/\d{2,4})/i);
+      if (p5) { ficoScore = parseInt(p5[1], 10); ficoDate = p5[2]; }
+    }
+
+    // Validate: must be a plausible FICO score (300–850)
+    if (ficoScore && (ficoScore < 300 || ficoScore > 850)) {
+      console.warn('[Parser] Discover: rejected implausible FICO score:', ficoScore);
+      ficoScore = null;
+    }
+
+    if (ficoScore) {
+      result.creditScore = ficoScore;
+      result.creditScoreDate = ficoDate || null;
       console.log('[Parser] Discover: credit score', result.creditScore, 'as of', result.creditScoreDate);
+    } else {
+      console.warn('[Parser] Discover: could not extract FICO score from statement text');
+      // Log a snippet of the text around "fico" for debugging
+      const ficoIdx = text.toLowerCase().indexOf('fico');
+      if (ficoIdx !== -1) {
+        console.log('[Parser] Discover: FICO context:', JSON.stringify(text.slice(Math.max(0, ficoIdx - 20), ficoIdx + 100)));
+      }
     }
 
     console.log(`[Parser] Discover: parsed ${result.parsedCount} transactions, ending balance: ${result.endingBalance}`);

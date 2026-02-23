@@ -35,6 +35,9 @@
   /** @type {Chart|null} Credit score line chart */
   let _creditChart = null;
 
+  /** @type {Chart|null} Cumulative detail overlay chart */
+  let _detailChart = null;
+
   /** @type {boolean} Prevents concurrent loadMonth calls */
   let _loading = false;
 
@@ -584,17 +587,24 @@
       const textColor = isDark ? '#94A3B8' : '#6B7280';
       const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
 
-      const Y_AXIS_W = 52;
-      const CHART_H  = 200;
-      const PT_WIDTH = 56;
+      const Y_AXIS_W   = 52;
+      const CHART_H    = 200;
+      const MONTHS_VIS = 12; // number of months visible at once
+      const DPR        = window.devicePixelRatio || 1; // retina fix
 
       // Build cumulative running total
       let running = 0;
-      const labels = [];
-      const data   = [];
+      const labels   = [];
+      const data     = [];
+      const monthKeys = [];
       allSummaries.forEach(function (s) {
         running += (s.netSavings || 0);
-        labels.push(monthKeyToShort(s.monthKey));
+        // Short month label: "Feb '26" style — consistent with sub-charts
+        const mk = s.monthKey || '';
+        const parts = mk.split('-');
+        const d = parts.length === 2 ? new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, 1) : null;
+        labels.push(d ? d.toLocaleDateString('en-US', { month: 'short' }) : mk);
+        monthKeys.push(mk);
         data.push(Math.round(running * 100) / 100);
       });
 
@@ -603,22 +613,28 @@
       const fillColor = lastVal >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.10)';
       const dotColor  = lineColor;
 
-      // Y-axis range with 12% padding
-      const rawMin = Math.min.apply(null, data);
-      const rawMax = Math.max.apply(null, data);
-      const pad    = Math.max(Math.abs(rawMax - rawMin) * 0.12, 100);
-      const minVal = rawMin - pad;
-      const maxVal = rawMax + pad;
+      // ── Sizing: each point gets exactly (availW / MONTHS_VIS) px ──────────
+      // Use window.innerWidth as fallback when card is hidden (offsetWidth = 0)
+      const parentW = innerEl.parentElement ? innerEl.parentElement.offsetWidth : 0;
+      const availW  = parentW > 0 ? parentW : Math.max(200, window.innerWidth - Y_AXIS_W - 48);
+      // Point width = viewport divided by MONTHS_VIS so exactly 12 fit
+      const ptW     = Math.floor(availW / MONTHS_VIS);
+      // Total chart width: enough for all data points
+      const chartW  = Math.max(availW, labels.length * ptW);
 
-      // Chart width: at least 12 points visible, scroll for more
-      const availW = (innerEl.parentElement ? innerEl.parentElement.offsetWidth : 0) || (window.innerWidth - Y_AXIS_W - 32);
-      const ptW    = Math.max(PT_WIDTH, Math.floor(availW / Math.min(12, labels.length)));
-      const chartW = Math.max(availW, labels.length * ptW);
+      // Apply devicePixelRatio to the scrollable chart canvas (Chart.js handles its own DPR)
+      // but the y-axis canvas is raw Canvas 2D — must be scaled manually
       canvas.width  = chartW;
       canvas.height = CHART_H;
-      yAxisCanvas.width  = Y_AXIS_W;
-      yAxisCanvas.height = CHART_H;
+      canvas.style.width  = chartW + 'px';
+      canvas.style.height = CHART_H + 'px';
+
+      // Y-axis canvas: scale for retina
+      yAxisCanvas.width  = Y_AXIS_W * DPR;
+      yAxisCanvas.height = CHART_H * DPR;
+      yAxisCanvas.style.width  = Y_AXIS_W + 'px';
       yAxisCanvas.style.height = CHART_H + 'px';
+
       innerEl.style.width  = chartW + 'px';
       innerEl.style.height = CHART_H + 'px';
 
@@ -626,30 +642,52 @@
       var outerWrapper = innerEl.parentElement && innerEl.parentElement.parentElement;
       if (outerWrapper) outerWrapper.style.height = CHART_H + 'px';
 
-      // Scroll to most recent (rightmost)
-      requestAnimationFrame(function () {
-        var sw = innerEl.parentElement;
-        if (sw) sw.scrollLeft = sw.scrollWidth;
-      });
+      // ── Dynamic y-axis: recompute range from visible window ───────────────
+      /**
+       * Given the current scroll position, compute which data indices are visible
+       * and return the min/max of those values (with padding).
+       */
+      function getVisibleRange(scrollLeft) {
+        var scrollW = innerEl.parentElement ? innerEl.parentElement.offsetWidth : availW;
+        // Which data indices are in the visible viewport?
+        var firstIdx = Math.max(0, Math.floor(scrollLeft / ptW) - 1);
+        var lastIdx  = Math.min(data.length - 1, Math.ceil((scrollLeft + scrollW) / ptW));
+        var visData  = data.slice(firstIdx, lastIdx + 1);
+        if (visData.length === 0) visData = data;
+        var vMin = Math.min.apply(null, visData);
+        var vMax = Math.max.apply(null, visData);
+        var pad  = Math.max(Math.abs(vMax - vMin) * 0.15, 200);
+        return { minVal: vMin - pad, maxVal: vMax + pad };
+      }
 
-      // Draw sticky y-axis with explicit pixel colors
-      function drawYAxis() {
+      // Initial range: show the last MONTHS_VIS months
+      var initScrollLeft = Math.max(0, chartW - availW);
+      var initRange = getVisibleRange(initScrollLeft);
+      var minVal = initRange.minVal;
+      var maxVal = initRange.maxVal;
+
+      // ── Draw sticky y-axis (DPR-aware) ────────────────────────────────────
+      function drawYAxis(curMin, curMax) {
         var ctx = yAxisCanvas.getContext('2d');
-        ctx.clearRect(0, 0, Y_AXIS_W, CHART_H);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform
+        ctx.clearRect(0, 0, yAxisCanvas.width, yAxisCanvas.height);
+        ctx.scale(DPR, DPR); // scale for retina
         ctx.fillStyle = textColor;
-        ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.font = '11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif';
         ctx.textAlign = 'right';
         var steps  = 4;
         var top    = 12;
         var bottom = CHART_H - 24; // leave room for x-axis labels
         var h      = bottom - top;
         for (var i = 0; i <= steps; i++) {
-          var val = minVal + (maxVal - minVal) * (i / steps);
+          var val = curMin + (curMax - curMin) * (i / steps);
           var y   = bottom - (h * i / steps);
           var abs = Math.abs(val);
-          var lbl = (val < 0 ? '-' : '') + '$' + (abs >= 1000 ? (abs / 1000).toFixed(0) + 'k' : Math.round(abs));
-          ctx.fillText(lbl, Y_AXIS_W - 4, y + 3);
+          var lbl = (val < 0 ? '-' : '') + '$' + (abs >= 1000 ? (abs / 1000).toFixed(1).replace('.0', '') + 'k' : Math.round(abs));
+          ctx.fillText(lbl, Y_AXIS_W - 4, y + 4);
         }
+        ctx.restore();
       }
 
       _cumulativeChart = new Chart(canvas, {
@@ -682,13 +720,23 @@
                   var v = ctx.raw;
                   return ' ' + (v < 0 ? '-' : '+') + formatCurrency(Math.abs(v));
                 },
+                title: function (items) {
+                  return items[0] ? items[0].label : '';
+                },
               },
             },
           },
           scales: {
             x: {
               grid: { display: false },
-              ticks: { color: textColor, maxRotation: 0, maxTicksLimit: 12 },
+              ticks: {
+                color: textColor,
+                maxRotation: 0,
+                // Show every tick — we control density via ptW
+                autoSkip: true,
+                maxTicksLimit: MONTHS_VIS,
+                font: { size: 11 },
+              },
             },
             y: {
               min: minVal,
@@ -698,9 +746,34 @@
             },
           },
           animation: {
-            onComplete: function () { drawYAxis(); },
+            onComplete: function () { drawYAxis(minVal, maxVal); },
           },
         },
+      });
+
+      // ── Scroll to most recent (rightmost) ─────────────────────────────────
+      requestAnimationFrame(function () {
+        var sw = innerEl.parentElement;
+        if (sw) {
+          sw.scrollLeft = sw.scrollWidth;
+          drawYAxis(minVal, maxVal);
+
+          // ── Update y-axis dynamically as user scrolls ──────────────────
+          var scrollTimer = null;
+          sw.addEventListener('scroll', function () {
+            clearTimeout(scrollTimer);
+            scrollTimer = setTimeout(function () {
+              var range = getVisibleRange(sw.scrollLeft);
+              // Update chart y-axis range
+              if (_cumulativeChart) {
+                _cumulativeChart.options.scales.y.min = range.minVal;
+                _cumulativeChart.options.scales.y.max = range.maxVal;
+                _cumulativeChart.update('none'); // no animation for scroll update
+              }
+              drawYAxis(range.minVal, range.maxVal);
+            }, 80); // debounce 80ms
+          }, { passive: true });
+        }
       });
     },
 
@@ -708,6 +781,8 @@
 
     /**
      * Renders a scrollable credit score line chart on the dashboard.
+     * Handles single data point gracefully by showing a score badge instead of
+     * a chart with a single orphaned dot.
      * @param {object[]} scores  Sorted ascending by monthKey
      */
     renderCreditScoreChart: function (scores) {
@@ -733,6 +808,32 @@
       const labels = scores.map(function (s) { return monthKeyToShort(s.monthKey); });
       const data   = scores.map(function (s) { return s.score; });
 
+      // ── Single data point: render a score badge instead of a chart ────────
+      if (scores.length === 1) {
+        const score = data[0];
+        const scoreColor = score >= 750 ? '#10B981' : score >= 700 ? '#F59E0B' : '#EF4444';
+        const scoreLabel = score >= 750 ? 'Excellent' : score >= 700 ? 'Good' : 'Fair';
+        const monthLabel = labels[0];
+
+        // Hide the scrollable chart area and show a badge instead
+        const chartWrapper = innerEl.parentElement && innerEl.parentElement.parentElement;
+        if (chartWrapper) {
+          chartWrapper.innerHTML =
+            '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+            'padding:20px 0;gap:6px;">' +
+              '<div style="font-size:52px;font-weight:800;color:' + scoreColor + ';line-height:1;">' + score + '</div>' +
+              '<div style="font-size:14px;font-weight:600;color:' + scoreColor + ';">' + scoreLabel + '</div>' +
+              '<div style="font-size:12px;color:' + textColor + ';margin-top:4px;">As of ' + monthLabel + '</div>' +
+              '<div style="font-size:11px;color:' + textColor + ';opacity:0.7;margin-top:2px;">' +
+                'Upload more statements to see your score trend' +
+              '</div>' +
+            '</div>';
+        }
+        return;
+      }
+
+      // ── Multiple data points: render the scrollable line chart ────────────
+
       // Color each point by score range
       const pointColors = data.map(function (v) {
         if (v >= 750) return '#10B981';
@@ -740,20 +841,38 @@
         return '#EF4444';
       });
 
-      // Y-axis: 580–850 range (typical FICO range)
-      const rawMin = Math.max(500, Math.min.apply(null, data) - 20);
-      const rawMax = Math.min(850, Math.max.apply(null, data) + 20);
+      // Y-axis: tight range around actual scores with 15-point padding
+      const scoreMin = Math.min.apply(null, data);
+      const scoreMax = Math.max.apply(null, data);
+      const scorePad = Math.max(15, Math.round((scoreMax - scoreMin) * 0.2));
+      const rawMin   = Math.max(300, scoreMin - scorePad);
+      const rawMax   = Math.min(850, scoreMax + scorePad);
 
-      const availW = (innerEl.parentElement ? innerEl.parentElement.offsetWidth : 0) || (window.innerWidth - Y_AXIS_W - 32);
-      const ptW    = Math.max(PT_WIDTH, Math.floor(availW / Math.min(12, labels.length)));
-      const chartW = Math.max(availW, labels.length * ptW);
+      const DPR_C = window.devicePixelRatio || 1; // retina fix for credit chart
+
+      // Use window.innerWidth as fallback when card is hidden (offsetWidth = 0)
+      const parentW = innerEl.parentElement ? innerEl.parentElement.offsetWidth : 0;
+      const availW  = parentW > 0 ? parentW : Math.max(200, window.innerWidth - Y_AXIS_W - 48);
+      const ptW     = Math.max(PT_WIDTH, Math.floor(availW / Math.min(12, labels.length)));
+      const chartW  = Math.max(availW, labels.length * ptW);
+
       canvas.width  = chartW;
       canvas.height = CHART_H;
-      yAxisCanvas.width  = Y_AXIS_W;
-      yAxisCanvas.height = CHART_H;
+      canvas.style.width  = chartW + 'px';
+      canvas.style.height = CHART_H + 'px';
+
+      // Y-axis canvas: scale for retina
+      yAxisCanvas.width  = Y_AXIS_W * DPR_C;
+      yAxisCanvas.height = CHART_H * DPR_C;
+      yAxisCanvas.style.width  = Y_AXIS_W + 'px';
       yAxisCanvas.style.height = CHART_H + 'px';
+
       innerEl.style.width  = chartW + 'px';
       innerEl.style.height = CHART_H + 'px';
+
+      // Ensure outer wrapper has correct height
+      var outerWrapper = innerEl.parentElement && innerEl.parentElement.parentElement;
+      if (outerWrapper) outerWrapper.style.height = CHART_H + 'px';
 
       requestAnimationFrame(function () {
         var sw = innerEl.parentElement;
@@ -762,17 +881,21 @@
 
       function drawYAxis() {
         var ctx = yAxisCanvas.getContext('2d');
-        ctx.clearRect(0, 0, Y_AXIS_W, CHART_H);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, yAxisCanvas.width, yAxisCanvas.height);
+        ctx.scale(DPR_C, DPR_C);
         ctx.fillStyle = textColor;
-        ctx.font = '10px -apple-system, BlinkMacSystemFont, sans-serif';
+        ctx.font = '11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif';
         ctx.textAlign = 'right';
         var steps = 4;
         var top = 12, bottom = CHART_H - 24, h = bottom - top;
         for (var i = 0; i <= steps; i++) {
           var val = rawMin + (rawMax - rawMin) * (i / steps);
           var y   = bottom - (h * i / steps);
-          ctx.fillText(Math.round(val), Y_AXIS_W - 4, y + 3);
+          ctx.fillText(Math.round(val), Y_AXIS_W - 4, y + 4);
         }
+        ctx.restore();
       }
 
       _creditChart = new Chart(canvas, {
@@ -804,13 +927,21 @@
                 label: function (ctx) {
                   return ' FICO: ' + ctx.raw;
                 },
+                title: function (items) {
+                  return items[0] ? items[0].label : '';
+                },
               },
             },
           },
           scales: {
             x: {
               grid: { display: false },
-              ticks: { color: textColor, maxRotation: 0, maxTicksLimit: 12 },
+              ticks: {
+                color: textColor,
+                maxRotation: 0,
+                maxTicksLimit: 12,
+                font: { size: 11 },
+              },
             },
             y: {
               min: rawMin,
@@ -1010,6 +1141,343 @@
 
       if (prevBtn) prevBtn.disabled = (_currentMonthIndex <= 0);
       if (nextBtn) nextBtn.disabled = (_currentMonthIndex >= _availableMonths.length - 1);
+    },
+
+    // ── openCumulativeDetail ──────────────────────────────────────────────────
+
+    /**
+     * Opens the full-screen Google Stocks-style cumulative net saved detail overlay.
+     * Wires up the back button, time range selector, and renders the chart.
+     */
+    openCumulativeDetail: function () {
+      const overlay = el('cumulative-detail-overlay');
+      if (!overlay) return;
+
+      // Show overlay with slide-in animation
+      overlay.style.display = 'flex';
+      requestAnimationFrame(function () {
+        overlay.style.transform = 'translateX(0)';
+      });
+
+      // Wire back button (only once)
+      const backBtn = el('cumulative-detail-back');
+      if (backBtn && !backBtn._wired) {
+        backBtn._wired = true;
+        backBtn.addEventListener('click', function () {
+          DashboardScreen.closeCumulativeDetail();
+        });
+      }
+
+      // Render with default range (12 months)
+      DashboardScreen._renderCumulativeDetail(12);
+    },
+
+    /**
+     * Closes the cumulative detail overlay.
+     */
+    closeCumulativeDetail: function () {
+      const overlay = el('cumulative-detail-overlay');
+      if (!overlay) return;
+      overlay.style.transform = 'translateX(100%)';
+      setTimeout(function () {
+        overlay.style.display = 'none';
+        // Destroy detail chart to free memory
+        if (_detailChart) {
+          _detailChart.destroy();
+          _detailChart = null;
+        }
+      }, 320);
+    },
+
+    /**
+     * Sets the time range for the cumulative detail chart.
+     * @param {number} months  0 = all time, otherwise number of months
+     */
+    setCumulativeRange: function (months) {
+      // Update active button state
+      const selector = el('cumdet-range-selector');
+      if (selector) {
+        selector.querySelectorAll('.segmented-btn').forEach(function (btn) {
+          const r = parseInt(btn.getAttribute('data-range'), 10);
+          btn.classList.toggle('active', r === months);
+        });
+      }
+      DashboardScreen._renderCumulativeDetail(months);
+    },
+
+    /**
+     * Renders the detail chart for the given time range.
+     * @param {number} rangeMonths  0 = all, otherwise last N months
+     * @private
+     */
+    _renderCumulativeDetail: async function (rangeMonths) {
+      try {
+        const allSummaries = await FinanceDB.getAllMonthlySummaries();
+        if (!allSummaries || allSummaries.length === 0) return;
+
+        // Filter to range
+        let filtered = allSummaries;
+        if (rangeMonths > 0) {
+          filtered = allSummaries.slice(-rangeMonths);
+        }
+
+        const isDark    = document.documentElement.getAttribute('data-theme') === 'dark';
+        const textColor = isDark ? '#94A3B8' : '#6B7280';
+        const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+        const DPR       = window.devicePixelRatio || 1;
+
+        // Build cumulative data for the filtered range
+        // We need the running total up to the start of the range first
+        let baseRunning = 0;
+        const startIdx = allSummaries.indexOf(filtered[0]);
+        for (let i = 0; i < startIdx; i++) {
+          baseRunning += (allSummaries[i].netSavings || 0);
+        }
+
+        let running = baseRunning;
+        const labels   = [];
+        const data     = [];
+        const rawSavings = []; // monthly net savings (not cumulative)
+
+        filtered.forEach(function (s) {
+          running += (s.netSavings || 0);
+          const mk = s.monthKey || '';
+          const parts = mk.split('-');
+          const d = parts.length === 2 ? new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, 1) : null;
+          labels.push(d ? d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }) : mk);
+          data.push(Math.round(running * 100) / 100);
+          rawSavings.push(Math.round((s.netSavings || 0) * 100) / 100);
+        });
+
+        const lastVal   = data[data.length - 1] || 0;
+        const firstVal  = data[0] || 0;
+        const change    = lastVal - firstVal;
+        const lineColor = lastVal >= 0 ? '#10B981' : '#EF4444';
+        const fillColor = lastVal >= 0 ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.08)';
+
+        // ── Update hero values ──────────────────────────────────────────────
+        const heroVal    = el('cumdet-hero-value');
+        const heroChange = el('cumdet-hero-change');
+        const heroRange  = el('cumdet-hero-range');
+
+        if (heroVal) {
+          heroVal.textContent = (lastVal < 0 ? '-' : '') + '$' + Math.abs(lastVal).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+          heroVal.style.color = lastVal >= 0 ? 'var(--text-primary)' : '#EF4444';
+        }
+        if (heroChange) {
+          const sign = change >= 0 ? '+' : '-';
+          heroChange.textContent = sign + '$' + Math.abs(change).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) +
+            ' (' + (rangeMonths > 0 ? 'last ' + rangeMonths + ' mo' : 'all time') + ')';
+          heroChange.style.color = change >= 0 ? '#10B981' : '#EF4444';
+        }
+        if (heroRange) {
+          heroRange.textContent = labels.length > 0 ? labels[0] + ' – ' + labels[labels.length - 1] : '';
+        }
+
+        // ── Update stats ────────────────────────────────────────────────────
+        const totalSaved = lastVal;
+        const avgPerMonth = filtered.length > 0 ? Math.round(rawSavings.reduce(function (a, b) { return a + b; }, 0) / filtered.length) : 0;
+
+        let bestIdx = 0, worstIdx = 0;
+        rawSavings.forEach(function (v, i) {
+          if (v > rawSavings[bestIdx]) bestIdx = i;
+          if (v < rawSavings[worstIdx]) worstIdx = i;
+        });
+
+        const statTotal = el('cumdet-stat-total');
+        const statAvg   = el('cumdet-stat-avg');
+        const statBest  = el('cumdet-stat-best');
+        const statBestL = el('cumdet-stat-best-label');
+        const statWorst = el('cumdet-stat-worst');
+        const statWorstL= el('cumdet-stat-worst-label');
+
+        if (statTotal) {
+          statTotal.textContent = (totalSaved < 0 ? '-' : '+') + '$' + Math.abs(totalSaved).toLocaleString('en-US', { maximumFractionDigits: 0 });
+          statTotal.style.color = totalSaved >= 0 ? '#10B981' : '#EF4444';
+        }
+        if (statAvg) {
+          statAvg.textContent = (avgPerMonth < 0 ? '-' : '+') + '$' + Math.abs(avgPerMonth).toLocaleString('en-US', { maximumFractionDigits: 0 });
+          statAvg.style.color = avgPerMonth >= 0 ? '#10B981' : '#EF4444';
+        }
+        if (statBest && rawSavings.length > 0) {
+          statBest.textContent = '+$' + Math.abs(rawSavings[bestIdx]).toLocaleString('en-US', { maximumFractionDigits: 0 });
+        }
+        if (statBestL && filtered[bestIdx]) {
+          statBestL.textContent = labels[bestIdx] || filtered[bestIdx].monthKey;
+        }
+        if (statWorst && rawSavings.length > 0) {
+          statWorst.textContent = (rawSavings[worstIdx] < 0 ? '-' : '') + '$' + Math.abs(rawSavings[worstIdx]).toLocaleString('en-US', { maximumFractionDigits: 0 });
+        }
+        if (statWorstL && filtered[worstIdx]) {
+          statWorstL.textContent = labels[worstIdx] || filtered[worstIdx].monthKey;
+        }
+
+        // ── Render chart ────────────────────────────────────────────────────
+        if (_detailChart) {
+          _detailChart.destroy();
+          _detailChart = null;
+        }
+
+        const chartCanvas = el('cumdet-chart');
+        const yAxisCanvas = el('cumdet-yaxis');
+        if (!chartCanvas || !yAxisCanvas) return;
+
+        const CHART_H  = 260;
+        const Y_AXIS_W = 56;
+
+        // Chart canvas: full width of its container
+        const containerW = chartCanvas.parentElement ? chartCanvas.parentElement.offsetWidth : (window.innerWidth - Y_AXIS_W - 32);
+        chartCanvas.width  = containerW;
+        chartCanvas.height = CHART_H;
+        chartCanvas.style.width  = containerW + 'px';
+        chartCanvas.style.height = CHART_H + 'px';
+
+        // Y-axis canvas: DPR-scaled
+        yAxisCanvas.width  = Y_AXIS_W * DPR;
+        yAxisCanvas.height = CHART_H * DPR;
+        yAxisCanvas.style.width  = Y_AXIS_W + 'px';
+        yAxisCanvas.style.height = CHART_H + 'px';
+
+        // Y range
+        const dMin = Math.min.apply(null, data);
+        const dMax = Math.max.apply(null, data);
+        const pad  = Math.max(Math.abs(dMax - dMin) * 0.12, 200);
+        const yMin = dMin - pad;
+        const yMax = dMax + pad;
+
+        function drawDetailYAxis() {
+          var ctx = yAxisCanvas.getContext('2d');
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, yAxisCanvas.width, yAxisCanvas.height);
+          ctx.scale(DPR, DPR);
+          ctx.fillStyle = textColor;
+          ctx.font = '11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif';
+          ctx.textAlign = 'right';
+          var steps = 5, top = 12, bottom = CHART_H - 24, h = bottom - top;
+          for (var i = 0; i <= steps; i++) {
+            var val = yMin + (yMax - yMin) * (i / steps);
+            var y   = bottom - (h * i / steps);
+            var abs = Math.abs(val);
+            var lbl = (val < 0 ? '-' : '') + '$' + (abs >= 1000 ? (abs / 1000).toFixed(1).replace('.0', '') + 'k' : Math.round(abs));
+            ctx.fillText(lbl, Y_AXIS_W - 4, y + 4);
+          }
+          ctx.restore();
+        }
+
+        _detailChart = new Chart(chartCanvas, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Cumulative Saved',
+              data: data,
+              borderColor: lineColor,
+              backgroundColor: fillColor,
+              fill: true,
+              tension: 0.35,
+              pointRadius: data.length <= 24 ? 4 : 2,
+              pointHoverRadius: 7,
+              pointBackgroundColor: lineColor,
+              pointBorderColor: lineColor,
+              borderWidth: 2.5,
+            }],
+          },
+          options: {
+            responsive: false,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                external: function (context) {
+                  // Show custom tooltip div
+                  const tooltipEl = el('cumdet-tooltip');
+                  if (!tooltipEl) return;
+                  const tooltip = context.tooltip;
+                  if (tooltip.opacity === 0) {
+                    tooltipEl.style.display = 'none';
+                    return;
+                  }
+                  const dp = tooltip.dataPoints && tooltip.dataPoints[0];
+                  if (!dp) return;
+                  const v = dp.raw;
+                  const sign = v >= 0 ? '+' : '-';
+                  const monthly = rawSavings[dp.dataIndex];
+                  const mSign = monthly >= 0 ? '+' : '-';
+                  tooltipEl.innerHTML =
+                    '<strong>' + dp.label + '</strong><br>' +
+                    'Total: ' + sign + '$' + Math.abs(v).toLocaleString('en-US', { maximumFractionDigits: 0 }) + '<br>' +
+                    '<span style="font-size:11px;color:' + (monthly >= 0 ? '#10B981' : '#EF4444') + ';">' +
+                    'This month: ' + mSign + '$' + Math.abs(monthly).toLocaleString('en-US', { maximumFractionDigits: 0 }) +
+                    '</span>';
+                  tooltipEl.style.display = 'block';
+                  // Position tooltip
+                  const chartRect = chartCanvas.getBoundingClientRect();
+                  const overlayRect = el('cumulative-detail-overlay').getBoundingClientRect();
+                  var left = tooltip.caretX + Y_AXIS_W + 8;
+                  if (left + 160 > containerW + Y_AXIS_W) left = tooltip.caretX + Y_AXIS_W - 168;
+                  tooltipEl.style.left = left + 'px';
+                  tooltipEl.style.top  = '8px';
+                },
+              },
+            },
+            scales: {
+              x: {
+                grid: { display: false },
+                ticks: {
+                  color: textColor,
+                  maxRotation: 0,
+                  autoSkip: true,
+                  maxTicksLimit: 12,
+                  font: { size: 11 },
+                },
+              },
+              y: {
+                min: yMin,
+                max: yMax,
+                grid: { color: gridColor },
+                ticks: { display: false },
+              },
+            },
+            animation: {
+              onComplete: function () { drawDetailYAxis(); },
+            },
+          },
+        });
+
+        // ── Monthly breakdown list ──────────────────────────────────────────
+        const listEl = el('cumdet-monthly-list');
+        if (listEl) {
+          // Show most recent first
+          const rows = filtered.slice().reverse().map(function (s, revIdx) {
+            const origIdx = filtered.length - 1 - revIdx;
+            const savings = rawSavings[origIdx] || 0;
+            const cumVal  = data[origIdx] || 0;
+            const mk = s.monthKey || '';
+            const parts = mk.split('-');
+            const d = parts.length === 2 ? new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, 1) : null;
+            const mLabel = d ? d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : mk;
+            const sColor = savings >= 0 ? '#10B981' : '#EF4444';
+            const sSign  = savings >= 0 ? '+' : '-';
+            return '<div style="display:flex;align-items:center;padding:10px 0;border-bottom:0.5px solid var(--separator);">' +
+              '<div style="flex:1;">' +
+                '<div style="font-size:14px;font-weight:600;color:var(--text-primary);">' + mLabel + '</div>' +
+                '<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Cumulative: ' +
+                  (cumVal < 0 ? '-' : '+') + '$' + Math.abs(cumVal).toLocaleString('en-US', { maximumFractionDigits: 0 }) +
+                '</div>' +
+              '</div>' +
+              '<div style="font-size:16px;font-weight:700;color:' + sColor + ';">' +
+                sSign + '$' + Math.abs(savings).toLocaleString('en-US', { maximumFractionDigits: 0 }) +
+              '</div>' +
+            '</div>';
+          });
+          listEl.innerHTML = rows.join('');
+        }
+
+      } catch (err) {
+        console.error('[DashboardScreen] _renderCumulativeDetail failed:', err);
+      }
     },
 
   }; // end DashboardScreen

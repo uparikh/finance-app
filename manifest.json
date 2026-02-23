@@ -1,5 +1,6 @@
 {
   "name": "Finance Tracker",
+  "version": "1.0.0",
   "short_name": "Finance",
   "description": "Personal finance tracking app — offline, private, on your iPhone",
   "start_url": "/finance-app/",

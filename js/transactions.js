@@ -747,6 +747,12 @@
       return;
     }
 
+    // Disable save + delete buttons to prevent double-tap
+    const txnSaveBtn   = el('txn-edit-sheet-save');
+    const txnDeleteBtn = el('txn-edit-sheet-delete');
+    if (txnSaveBtn)   { txnSaveBtn.disabled   = true; }
+    if (txnDeleteBtn) { txnDeleteBtn.disabled = true; }
+
     const nameInput   = el('txn-edit-merchant-name');
     const amountInput = el('txn-edit-amount');
     const dateInput   = el('txn-edit-date');
@@ -767,6 +773,8 @@
         amountInput.style.borderColor = 'var(--danger)';
         setTimeout(function () { amountInput.style.borderColor = ''; }, 2000);
       }
+      if (txnSaveBtn)   { txnSaveBtn.disabled   = false; }
+      if (txnDeleteBtn) { txnDeleteBtn.disabled = false; }
       return;
     }
 
@@ -814,6 +822,10 @@
     }
 
     _closeTxnEditSheet();
+    // Re-enable buttons now that sheet is closed
+    if (txnSaveBtn)   { txnSaveBtn.disabled   = false; }
+    if (txnDeleteBtn) { txnDeleteBtn.disabled = false; }
+
     await loadTransactions();
     _renderCategoryChips();
     _populateAccountFilter();
@@ -862,8 +874,16 @@
    * @param {number} id
    */
   async function deleteTransaction(id) {
+    // Re-enable buttons before showing confirm (so cancel doesn't leave them disabled)
+    const txnSaveBtn2   = el('txn-edit-sheet-save');
+    const txnDeleteBtn2 = el('txn-edit-sheet-delete');
+
     const confirmed = window.confirm('Delete this transaction? This cannot be undone.');
-    if (!confirmed) return;
+    if (!confirmed) {
+      if (txnSaveBtn2)   { txnSaveBtn2.disabled   = false; }
+      if (txnDeleteBtn2) { txnDeleteBtn2.disabled = false; }
+      return;
+    }
 
     _closeTxnEditSheet();
 
