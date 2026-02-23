@@ -205,20 +205,37 @@
 
       await SettingsScreen.loadStorageStats();
 
-      // ── Version note ────────────────────────────────────────────────────────
-      // Read version from manifest.json (single source of truth) and surface it
-      // in the About card.  Falls back to the inline default if the fetch fails.
+      // ── Version + cache note ─────────────────────────────────────────────────
+      // Read version from manifest.json and CACHE_NAME from sw.js, then surface
+      // both in the About card.  Each falls back silently on error.
       (function () {
-        const el = document.getElementById('settings-version-text');
-        if (!el) return;
-        fetch('manifest.json')
-          .then(function (r) { return r.json(); })
-          .then(function (m) {
-            if (m && m.version) {
-              el.textContent = 'v' + m.version;
-            }
-          })
-          .catch(function () { /* keep inline fallback */ });
+        const versionEl = document.getElementById('settings-version-text');
+        const cacheEl   = document.getElementById('settings-cache-text');
+
+        // App version from manifest.json
+        if (versionEl) {
+          fetch('manifest.json')
+            .then(function (r) { return r.json(); })
+            .then(function (m) {
+              if (m && m.version) {
+                versionEl.textContent = 'v' + m.version;
+              }
+            })
+            .catch(function () { /* keep inline fallback */ });
+        }
+
+        // Service-worker cache name from sw.js
+        if (cacheEl) {
+          fetch('sw.js')
+            .then(function (r) { return r.text(); })
+            .then(function (src) {
+              const match = src.match(/const\s+CACHE_NAME\s*=\s*['"]([^'"]+)['"]/);
+              if (match) {
+                cacheEl.textContent = 'Cache: ' + match[1];
+              }
+            })
+            .catch(function () { /* omit if unavailable */ });
+        }
       }());
     },
 
