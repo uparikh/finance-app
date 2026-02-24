@@ -240,7 +240,9 @@
     const progressFill = document.querySelector('#upload-parsing .progress-bar-fill');
 
     const allTransactions = [];
-    const parseErrors = [];
+    const parseErrors     = [];
+    // Collect credit scores from individual Discover statements for bulk save
+    const bulkCreditScores = []; // [{monthKey, score, source}]
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -259,6 +261,16 @@
 
         allTransactions.push(...result.transactions);
         console.log('[UploadScreen] Bulk: parsed', result.transactions.length, 'from', file.name);
+
+        // Collect credit score if present
+        if (result.creditScore && result.statementMonth) {
+          bulkCreditScores.push({
+            monthKey: result.statementMonth,
+            score:    result.creditScore,
+            source:   result.bank || 'discover',
+          });
+          console.log('[UploadScreen] Bulk: credit score', result.creditScore, 'for', result.statementMonth);
+        }
 
       } catch (err) {
         parseErrors.push(file.name + ': ' + err.message);
@@ -291,6 +303,8 @@
       parseErrors: parseErrors,
       parsedCount: allTransactions.length,
       confidence: 1,
+      // Carry credit scores from individual Discover statements
+      bulkCreditScores: bulkCreditScores,
     };
 
     // Show the review screen with all transactions combined
@@ -1023,7 +1037,7 @@
         );
       }
 
-      // Save credit score if the parser extracted one (Discover statements)
+      // Save credit score if the parser extracted one (single Discover statement)
       if (currentParseResult &&
           currentParseResult.creditScore &&
           currentParseResult.statementMonth) {
@@ -1032,6 +1046,16 @@
           currentParseResult.creditScore,
           currentParseResult.bank || 'discover'
         );
+      }
+
+      // Save credit scores from bulk upload (multiple Discover statements)
+      if (currentParseResult &&
+          currentParseResult.bulkCreditScores &&
+          currentParseResult.bulkCreditScores.length > 0) {
+        for (const cs of currentParseResult.bulkCreditScores) {
+          await FinanceDB.saveCreditScore(cs.monthKey, cs.score, cs.source);
+        }
+        console.log('[UploadScreen] Saved', currentParseResult.bulkCreditScores.length, 'credit scores from bulk upload');
       }
 
       const count = pendingTransactions.length;
@@ -1116,20 +1140,25 @@
         ? txns.filter(function (t) { return t.accountId === accountId; })
         : txns;
 
-      if (toDelete.length === 0) {
-        showToast('No transactions found to delete.');
-        return;
-      }
-
       // Delete each transaction
       for (const txn of toDelete) {
         await FinanceDB.deleteTransaction(txn.id);
       }
 
-      // Recompute summary for this month
-      await FinanceDB.recomputeMonthlySummary(monthKey);
+      // Check if any transactions remain for this month (from other accounts)
+      const remaining = await FinanceDB.getTransactionsByMonth(monthKey);
+      if (remaining.length === 0) {
+        // No transactions left — delete the monthly summary entirely (removes ghost entry)
+        await FinanceDB.deleteMonthlySummary(monthKey);
+        // Also delete the credit score for this month
+        await FinanceDB.deleteCreditScore(monthKey);
+      } else {
+        // Transactions remain from other accounts — recompute summary
+        await FinanceDB.recomputeMonthlySummary(monthKey);
+      }
 
-      showToast('🗑️ Deleted ' + toDelete.length + ' transaction' + (toDelete.length !== 1 ? 's' : '') + '.');
+      const count = toDelete.length;
+      showToast('🗑️ Deleted ' + count + ' transaction' + (count !== 1 ? 's' : '') + '.');
 
       // Reload the list
       await loadRecentUploads();

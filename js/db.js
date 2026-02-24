@@ -1705,10 +1705,12 @@
     clearAllData: async function () {
       try {
         const db = await openDB();
-        const storesToClear = ['transactions', 'monthly_summaries'];
+        // Also clear credit_scores so they don't persist after a full data wipe
+        const storesToClear = ['transactions', 'monthly_summaries', 'credit_scores'];
 
         await Promise.all(storesToClear.map(function (storeName) {
           return new Promise(function (resolve, reject) {
+            if (!db.objectStoreNames.contains(storeName)) { resolve(); return; }
             const tx    = db.transaction(storeName, 'readwrite');
             const store = tx.objectStore(storeName);
             const req   = store.clear();
@@ -1717,10 +1719,41 @@
           });
         }));
 
-        console.log('[FinanceDB] All transaction data cleared.');
+        console.log('[FinanceDB] All transaction data cleared (including credit scores).');
       } catch (err) {
         console.error('[FinanceDB] clearAllData failed:', err);
         throw err;
+      }
+    },
+
+    /**
+     * Deletes the credit score entry for a specific monthKey.
+     * @param {string} monthKey  e.g. "2025-12"
+     */
+    deleteCreditScore: async function (monthKey) {
+      try {
+        const db    = await openDB();
+        if (!db.objectStoreNames.contains('credit_scores')) return;
+        const tx    = db.transaction('credit_scores', 'readwrite');
+        const store = tx.objectStore('credit_scores');
+        await _promisify(store.delete(monthKey));
+      } catch (err) {
+        console.warn('[FinanceDB] deleteCreditScore failed (non-fatal):', err);
+      }
+    },
+
+    /**
+     * Deletes the monthly summary for a specific monthKey.
+     * @param {string} monthKey  e.g. "2025-12"
+     */
+    deleteMonthlySummary: async function (monthKey) {
+      try {
+        const db    = await openDB();
+        const tx    = db.transaction('monthly_summaries', 'readwrite');
+        const store = tx.objectStore('monthly_summaries');
+        await _promisify(store.delete(monthKey));
+      } catch (err) {
+        console.warn('[FinanceDB] deleteMonthlySummary failed (non-fatal):', err);
       }
     },
 

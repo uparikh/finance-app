@@ -436,7 +436,9 @@ function extractStatementPeriod(text) {
     }
 
     // Pattern 6: "MM/DD/YYYY - MM/DD/YYYY" date range anywhere
-    const p6 = text.match(/(\d{2})\/\d{2}\/(\d{4})\s*[-–]\s*\d{2}\/\d{2}\/\d{4}/);
+    // Use the END date (second date) — billing periods start in the prior month.
+    // e.g. "11/21/2025 - 12/20/2025" → December 2025 (not November)
+    const p6 = text.match(/\d{2}\/\d{2}\/\d{4}\s*[-–]\s*(\d{2})\/\d{2}\/(\d{4})/);
     if (p6) {
       const mm = parseInt(p6[1], 10);
       const yyyy = parseInt(p6[2], 10);
