@@ -1435,65 +1435,54 @@ function parseDiscover(text, pages) {
 
     // ── FICO score extraction strategy ────────────────────────────────────
     // Discover statements include a FICO Score 8 section. PDF.js may extract
-    // the text in various ways depending on the PDF layout version.
-    // We try multiple patterns in order of specificity.
+    // the text in various ways depending on the PDF layout version:
+    //
+    //   A) Two-column layout: score and label on SAME line (same y-coordinate):
+    //      "798 FICO Score 8 based on TransUnion data:"
+    //
+    //   B) Score on line BEFORE the label (score is left column, label is right):
+    //      "798\nFICO Score 8 based on TransUnion data:"
+    //
+    //   C) Score on line AFTER the label:
+    //      "FICO Score 8 based on TransUnion data:\n798"
+    //
+    //   D) Score inline at end: "FICO Score 8 based on TransUnion data: 798"
+    //
+    // Strategy: find the word "fico" in the text, then search a ±200 char window
+    // around it for any 3-digit number in the 300-850 range.
 
-    // Pattern 0a: "FICO Score 8 based on TransUnion data: 798" (inline, any spacing)
-    const p0a = text.match(/fico\s+score\s+8\s+based\s+on\s+\w+\s+data\s*:?\s*([3-8]\d{2})\b/i);
-    if (p0a) { ficoScore = parseInt(p0a[1], 10); }
+    const ficoIdx = text.toLowerCase().indexOf('fico');
+    if (ficoIdx !== -1) {
+      // Extract a generous window around the FICO mention
+      const wStart  = Math.max(0, ficoIdx - 50);
+      const wEnd    = Math.min(text.length, ficoIdx + 300);
+      const wText   = text.slice(wStart, wEnd);
 
-    // Pattern 0b: "FICO Score 8 based on TransUnion data:\n798" (score on next line)
-    if (!ficoScore) {
-      const p0b = text.match(/fico\s+score\s+8\s+based\s+on\s+\w+\s+data\s*:?\s*\n\s*([3-8]\d{2})\b/i);
-      if (p0b) { ficoScore = parseInt(p0b[1], 10); }
-    }
+      console.log('[Parser] Discover: FICO window text:', JSON.stringify(wText));
 
-    // Pattern 0c: Any line with "fico" + "data" followed by a line with just a 3-digit score
-    // Handles cases where PDF.js splits the text differently
-    if (!ficoScore) {
-      const lines = text.split('\n');
-      for (let i = 0; i < lines.length - 1; i++) {
-        const line = lines[i].toLowerCase();
-        if (line.includes('fico') && (line.includes('data') || line.includes('score'))) {
-          // Check next 1-3 lines for a standalone score
-          for (let j = i + 1; j <= Math.min(i + 3, lines.length - 1); j++) {
-            const nextLine = lines[j].trim();
-            const scoreMatch = nextLine.match(/^([3-8]\d{2})$/);
-            if (scoreMatch) {
-              ficoScore = parseInt(scoreMatch[1], 10);
-              break;
-            }
-          }
-          if (ficoScore) break;
+      // Find all 3-digit numbers in the window that are plausible FICO scores.
+      // Use a pattern that captures the character before the number so we can
+      // exclude store numbers (#582), dates (03/04), decimals (1.798), amounts ($798).
+      const candidates = [];
+      const numRegex = /([#\/\.\$\d]?)([3-8]\d{2})(?!\d)/g;
+      let m;
+      while ((m = numRegex.exec(wText)) !== null) {
+        const prefix = m[1];
+        const val    = parseInt(m[2], 10);
+        // Skip if preceded by a digit, #, /, ., or $
+        if (prefix && /[#\/\.\$\d]/.test(prefix)) continue;
+        if (val >= 300 && val <= 850) {
+          candidates.push(val);
         }
+      }
+
+      if (candidates.length > 0) {
+        ficoScore = candidates[0];
+        console.log('[Parser] Discover: FICO candidates found:', candidates, '→ using', ficoScore);
       }
     }
 
-    // Pattern 1: score followed by "AS OF date" (possibly across lines)
-    if (!ficoScore) {
-      const p1 = text.match(/\b([3-8]\d{2})\s*[\n\r]+\s*AS\s+OF\s+([\w\/\s,]+?)(?:\n|$)/i);
-      if (p1) { ficoScore = parseInt(p1[1], 10); ficoDate = p1[2].trim(); }
-    }
-
-    // Pattern 2: "Your FICO Score 8 is NNN" (inline)
-    if (!ficoScore) {
-      const p2 = text.match(/fico[^\n]{0,50}(?:is\s+)?([3-8]\d{2})\b/i);
-      if (p2) { ficoScore = parseInt(p2[1], 10); }
-    }
-
-    // Pattern 3: "FICO Score 8\nNNN" or "FICO® Score\nNNN"
-    if (!ficoScore) {
-      const p3 = text.match(/fico[^\n]{0,30}\n\s*([3-8]\d{2})\b/i);
-      if (p3) { ficoScore = parseInt(p3[1], 10); }
-    }
-
-    // Pattern 4: score on its own line within 2 lines of "Credit Score" or "FICO"
-    if (!ficoScore) {
-      const p4 = text.match(/(?:credit\s+score|fico)[^\n]*\n[^\n]*\n\s*([3-8]\d{2})\b/i);
-      if (p4) { ficoScore = parseInt(p4[1], 10); }
-    }
-
-    // Pattern 5: "NNN as of MM/DD/YY" anywhere in text
+    // Fallback: "NNN as of MM/DD/YY" anywhere in text
     if (!ficoScore) {
       const p5 = text.match(/\b([3-8]\d{2})\s+as\s+of\s+(\d{2}\/\d{2}\/\d{2,4})/i);
       if (p5) { ficoScore = parseInt(p5[1], 10); ficoDate = p5[2]; }
@@ -1511,11 +1500,6 @@ function parseDiscover(text, pages) {
       console.log('[Parser] Discover: credit score', result.creditScore, 'as of', result.creditScoreDate);
     } else {
       console.warn('[Parser] Discover: could not extract FICO score from statement text');
-      // Log a snippet of the text around "fico" for debugging
-      const ficoIdx = text.toLowerCase().indexOf('fico');
-      if (ficoIdx !== -1) {
-        console.log('[Parser] Discover: FICO context:', JSON.stringify(text.slice(Math.max(0, ficoIdx - 20), ficoIdx + 100)));
-      }
     }
 
     console.log(`[Parser] Discover: parsed ${result.parsedCount} transactions, ending balance: ${result.endingBalance}`);
