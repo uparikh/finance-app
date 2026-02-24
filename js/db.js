@@ -311,6 +311,7 @@
 
     // ── Shopping ───────────────────────────────────────────────────────────
     ['amazon',             'shopping', 'Amazon'],
+    ['amzn',               'shopping', 'Amazon'],
     ['target',             'shopping', 'Target'],
     ['walmart',            'shopping', 'Walmart'],
     ['best buy',           'shopping', 'Best Buy'],
@@ -1405,10 +1406,16 @@
     categorizeTransaction: function (description) {
       if (!description) return 'other';
 
-      // Normalize: lowercase, strip payment-network prefixes, strip city/state suffix
+      // Normalize: lowercase, strip payment-network prefixes only.
+      // We do NOT strip city/state here because the regex can accidentally eat
+      // merchant names (e.g. "AMAZON WA" → "" after stripping " amazon wa").
+      // Instead we match against BOTH the normalized string (prefix-stripped) AND
+      // the original lowercased string, so named-chain rules always work.
       let normalized = description.toLowerCase().trim();
 
-      // Strip payment-network / POS prefixes
+      // Strip payment-network / POS prefixes so semantic keywords work:
+      // "SQ *8E8 THAI STREET FO LOS ANGELES CA" → "8e8 thai street fo los angeles ca"
+      // → matches 'thai '
       normalized = normalized.replace(
         /^(?:sq\s*\*\s*|tst\*\s*|pp\s*\*\s*|sp\s*\*\s*|apl\s*\*\s*|dd\s*\*\s*|doordash\s*\*\s*|lne\s*\*\s*|wal\s*\*\s*|wm\s+supercenter\s*)/,
         ''
@@ -1420,15 +1427,8 @@
         ''
       );
 
-      // Strip trailing city + 2-letter state (e.g. "LOS ANGELES CA", "RENTON WA")
-      normalized = normalized.replace(/\s+[a-z\s]{0,20}[a-z]{2}\s*$/, function (match) {
-        // Only strip if last 2 chars look like a state abbreviation (were uppercase before lowercasing)
-        return '';
-      });
-
-      // Strip trailing store/location numbers
-      normalized = normalized.replace(/\s+\d{3,}$/, '');
-      normalized = normalized.replace(/\s*#\d+/g, '');
+      // Strip inline reference IDs (e.g. "*NF99E7P60") so they don't interfere
+      normalized = normalized.replace(/\*[a-z0-9]{4,}/gi, '');
 
       // Match against rules cache using both the normalized and original lowercased description
       const lower = description.toLowerCase();

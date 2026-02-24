@@ -1433,11 +1433,41 @@ function parseDiscover(text, pages) {
     let ficoScore = null;
     let ficoDate  = null;
 
-    // Pattern 0 (highest priority): "FICO   Score 8 based on TransUnion   data:\nNNN"
-    // Handles extra whitespace between words (PDF.js column spacing artifact)
-    // Also handles inline: "FICO Score 8 based on TransUnion data: 798"
-    const p0 = text.match(/fico\s+score\s+8\s+based\s+on\s+\w+\s+data\s*:?\s*[\n\r\s]*([3-8]\d{2})\b/i);
-    if (p0) { ficoScore = parseInt(p0[1], 10); }
+    // ── FICO score extraction strategy ────────────────────────────────────
+    // Discover statements include a FICO Score 8 section. PDF.js may extract
+    // the text in various ways depending on the PDF layout version.
+    // We try multiple patterns in order of specificity.
+
+    // Pattern 0a: "FICO Score 8 based on TransUnion data: 798" (inline, any spacing)
+    const p0a = text.match(/fico\s+score\s+8\s+based\s+on\s+\w+\s+data\s*:?\s*([3-8]\d{2})\b/i);
+    if (p0a) { ficoScore = parseInt(p0a[1], 10); }
+
+    // Pattern 0b: "FICO Score 8 based on TransUnion data:\n798" (score on next line)
+    if (!ficoScore) {
+      const p0b = text.match(/fico\s+score\s+8\s+based\s+on\s+\w+\s+data\s*:?\s*\n\s*([3-8]\d{2})\b/i);
+      if (p0b) { ficoScore = parseInt(p0b[1], 10); }
+    }
+
+    // Pattern 0c: Any line with "fico" + "data" followed by a line with just a 3-digit score
+    // Handles cases where PDF.js splits the text differently
+    if (!ficoScore) {
+      const lines = text.split('\n');
+      for (let i = 0; i < lines.length - 1; i++) {
+        const line = lines[i].toLowerCase();
+        if (line.includes('fico') && (line.includes('data') || line.includes('score'))) {
+          // Check next 1-3 lines for a standalone score
+          for (let j = i + 1; j <= Math.min(i + 3, lines.length - 1); j++) {
+            const nextLine = lines[j].trim();
+            const scoreMatch = nextLine.match(/^([3-8]\d{2})$/);
+            if (scoreMatch) {
+              ficoScore = parseInt(scoreMatch[1], 10);
+              break;
+            }
+          }
+          if (ficoScore) break;
+        }
+      }
+    }
 
     // Pattern 1: score followed by "AS OF date" (possibly across lines)
     if (!ficoScore) {
@@ -1445,9 +1475,9 @@ function parseDiscover(text, pages) {
       if (p1) { ficoScore = parseInt(p1[1], 10); ficoDate = p1[2].trim(); }
     }
 
-    // Pattern 2: "Your FICO Score 8 is NNN"
+    // Pattern 2: "Your FICO Score 8 is NNN" (inline)
     if (!ficoScore) {
-      const p2 = text.match(/fico[^\n]{0,30}?(?:score[^\n]{0,20}?)?(?:is\s+)?([3-8]\d{2})\b/i);
+      const p2 = text.match(/fico[^\n]{0,50}(?:is\s+)?([3-8]\d{2})\b/i);
       if (p2) { ficoScore = parseInt(p2[1], 10); }
     }
 
@@ -1457,7 +1487,7 @@ function parseDiscover(text, pages) {
       if (p3) { ficoScore = parseInt(p3[1], 10); }
     }
 
-    // Pattern 4: score on its own line immediately preceded by "Credit Score" or "FICO"
+    // Pattern 4: score on its own line within 2 lines of "Credit Score" or "FICO"
     if (!ficoScore) {
       const p4 = text.match(/(?:credit\s+score|fico)[^\n]*\n[^\n]*\n\s*([3-8]\d{2})\b/i);
       if (p4) { ficoScore = parseInt(p4[1], 10); }

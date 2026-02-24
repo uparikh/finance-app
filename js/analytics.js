@@ -23,11 +23,12 @@
   let _allCategories   = [];
   let _activeRange     = 6;
 
-  let _trendChart    = null;
-  let _categoryChart    = null;
-  let _savingsChart     = null;
-  let _cumulativeChart  = null;
-  let _drillChart       = null;   // chart inside the drill-down overlay
+  let _trendChart      = null;
+  let _categoryChart   = null;
+  let _savingsChart    = null;
+  let _cumulativeChart = null;
+  let _drillChart      = null;   // chart inside the drill-down overlay
+  let _detailChart     = null;   // chart inside the cumulative detail overlay
 
   let _calendarYear  = new Date().getFullYear();
   let _calendarMonth = new Date().getMonth();
@@ -1057,9 +1058,8 @@
 
     /**
      * Wires the tap/click/keyboard handler on the cumulative chart card so it
-     * opens the drill-down overlay. Called after each render to ensure the
-     * handler is always attached (card innerHTML is not replaced, so one-time
-     * addEventListener is sufficient — we guard against double-binding with a flag).
+     * opens the Google Stocks-style detail overlay.
+     * Guards against double-binding with a flag.
      */
     _wireCumulativeCard: function () {
       const card = el('cumulative-chart-card');
@@ -1067,16 +1067,202 @@
       card._drillWired = true;
 
       function handleTap(e) {
-        // Don't open drill-down if the tap was on the chart canvas itself
-        // (allow normal chart tooltip interaction on the preview chart)
+        // Don't open if the tap was on the chart canvas itself
         if (e.target && e.target.tagName === 'CANVAS') return;
-        AnalyticsScreen._openDrilldown('cumulative');
+        AnalyticsScreen.openCumulativeDetail();
       }
 
       card.addEventListener('click', handleTap);
       card.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); AnalyticsScreen._openDrilldown('cumulative'); }
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); AnalyticsScreen.openCumulativeDetail(); }
       });
+    },
+
+    // ── openCumulativeDetail / closeCumulativeDetail / _renderCumulativeDetail
+
+    openCumulativeDetail: function () {
+      const overlay = el('cumulative-detail-overlay');
+      if (!overlay) return;
+
+      // Lock parent screen scroll
+      const parentScreen = el('screen-analytics');
+      if (parentScreen) { parentScreen._savedScrollTopCum = parentScreen.scrollTop; parentScreen.style.overflow = 'hidden'; }
+
+      // Slide in
+      overlay.style.transition = 'none';
+      overlay.style.transform  = 'translateX(100%)';
+      overlay.style.display    = 'flex';
+      requestAnimationFrame(function () {
+        overlay.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)';
+        overlay.style.transform  = 'translateX(0)';
+      });
+
+      // Wire back button (once)
+      const backBtn = el('cumulative-detail-back');
+      if (backBtn && !backBtn._wired) {
+        backBtn._wired = true;
+        backBtn.addEventListener('click', function () { AnalyticsScreen.closeCumulativeDetail(); });
+      }
+
+      // Wire range selector (once)
+      const rangeSelector = el('cumdet-range-selector');
+      if (rangeSelector && !rangeSelector._wired) {
+        rangeSelector._wired = true;
+        rangeSelector.querySelectorAll('[data-range]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            rangeSelector.querySelectorAll('[data-range]').forEach(function (b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            const r = btn.getAttribute('data-range');
+            AnalyticsScreen._renderCumulativeDetail(r === '0' ? 0 : parseInt(r, 10));
+          });
+        });
+      }
+
+      // Swipe-to-dismiss (left-edge)
+      var _g = { active: false, startX: 0, startY: 0, lastX: 0, direction: null, edgeSwipe: false };
+      var EDGE_W = 28;
+      function _ts(e) { _g.active = true; _g.startX = e.touches[0].clientX; _g.startY = e.touches[0].clientY; _g.lastX = _g.startX; _g.direction = null; _g.edgeSwipe = _g.startX <= EDGE_W; overlay.style.transition = 'none'; }
+      function _tm(e) {
+        if (!_g.active) return;
+        var dx = e.touches[0].clientX - _g.startX, dy = e.touches[0].clientY - _g.startY;
+        _g.lastX = e.touches[0].clientX;
+        if (!_g.direction) { if (Math.abs(dx) > 8 || Math.abs(dy) > 8) _g.direction = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical'; return; }
+        if (_g.direction === 'horizontal' && dx > 0 && _g.edgeSwipe) { overlay.style.transform = 'translateX(' + dx + 'px)'; overlay.style.opacity = String(Math.max(0.3, 1 - dx / (overlay.offsetWidth || window.innerWidth))); e.preventDefault(); }
+      }
+      function _te() {
+        if (!_g.active) return; _g.active = false;
+        var dx = _g.lastX - _g.startX, w = overlay.offsetWidth || window.innerWidth;
+        overlay.style.transition = 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease';
+        if (_g.direction === 'horizontal' && dx > 0 && _g.edgeSwipe && dx > w * 0.4) {
+          overlay.style.transform = 'translateX(100%)'; overlay.style.opacity = '0';
+          setTimeout(function () { overlay.style.display = 'none'; overlay.style.opacity = '1'; overlay.style.transition = 'none'; var ps = el('screen-analytics'); if (ps) { ps.style.overflow = ''; if (ps._savedScrollTopCum !== undefined) ps.scrollTop = ps._savedScrollTopCum; } }, 300);
+        } else { overlay.style.transform = 'translateX(0)'; overlay.style.opacity = '1'; }
+      }
+      if (overlay._cumTS) { overlay.removeEventListener('touchstart', overlay._cumTS); overlay.removeEventListener('touchmove', overlay._cumTM); overlay.removeEventListener('touchend', overlay._cumTE); }
+      overlay._cumTS = _ts; overlay._cumTM = _tm; overlay._cumTE = _te;
+      overlay.addEventListener('touchstart', _ts, { passive: true });
+      overlay.addEventListener('touchmove',  _tm, { passive: false });
+      overlay.addEventListener('touchend',   _te, { passive: true });
+
+      AnalyticsScreen._renderCumulativeDetail(12);
+    },
+
+    closeCumulativeDetail: function () {
+      const overlay = el('cumulative-detail-overlay');
+      if (!overlay) return;
+      overlay.style.transition = 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1)';
+      overlay.style.transform  = 'translateX(100%)';
+      setTimeout(function () {
+        overlay.style.display = 'none'; overlay.style.transition = 'none';
+        var ps = el('screen-analytics'); if (ps) { ps.style.overflow = ''; if (ps._savedScrollTopCum !== undefined) ps.scrollTop = ps._savedScrollTopCum; }
+        if (_detailChart) { _detailChart.destroy(); _detailChart = null; }
+      }, 300);
+    },
+
+    _renderCumulativeDetail: async function (rangeMonths) {
+      try {
+        const allSummaries = await FinanceDB.getAllMonthlySummaries();
+        if (!allSummaries || allSummaries.length === 0) return;
+
+        let filtered = allSummaries;
+        if (rangeMonths > 0) filtered = allSummaries.slice(-rangeMonths);
+
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const textColor = isDark ? '#94A3B8' : '#6B7280';
+        const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+        const DPR = window.devicePixelRatio || 1;
+
+        // Build cumulative data (carry forward running total from before the range)
+        let baseRunning = 0;
+        const startIdx = allSummaries.indexOf(filtered[0]);
+        for (let i = 0; i < startIdx; i++) baseRunning += (allSummaries[i].netSavings || 0);
+
+        let running = baseRunning;
+        const labels = [], data = [], rawSavings = [];
+        filtered.forEach(function (s) {
+          running += (s.netSavings || 0);
+          const mk = s.monthKey || '', parts = mk.split('-');
+          const d = parts.length === 2 ? new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, 1) : null;
+          labels.push(d ? d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }) : mk);
+          data.push(Math.round(running * 100) / 100);
+          rawSavings.push(Math.round((s.netSavings || 0) * 100) / 100);
+        });
+
+        const lastVal = data[data.length - 1] || 0, firstVal = data[0] || 0, change = lastVal - firstVal;
+        const lineColor = lastVal >= 0 ? '#10B981' : '#EF4444';
+        const fillColor = lastVal >= 0 ? 'rgba(16,185,129,0.10)' : 'rgba(239,68,68,0.08)';
+
+        // Hero
+        const heroVal = el('cumdet-hero-value'), heroChange = el('cumdet-hero-change'), heroRange = el('cumdet-hero-range');
+        if (heroVal) { heroVal.textContent = (lastVal < 0 ? '-' : '') + '$' + Math.abs(lastVal).toLocaleString('en-US', { maximumFractionDigits: 0 }); heroVal.style.color = lastVal >= 0 ? 'var(--text-primary)' : '#EF4444'; }
+        if (heroChange) { const sign = change >= 0 ? '+' : '-'; heroChange.textContent = sign + '$' + Math.abs(change).toLocaleString('en-US', { maximumFractionDigits: 0 }) + ' (' + (rangeMonths > 0 ? 'last ' + rangeMonths + ' mo' : 'all time') + ')'; heroChange.style.color = change >= 0 ? '#10B981' : '#EF4444'; }
+        if (heroRange) heroRange.textContent = labels.length > 0 ? labels[0] + ' – ' + labels[labels.length - 1] : '';
+
+        // Stats
+        const avgPerMonth = filtered.length > 0 ? Math.round(rawSavings.reduce(function (a, b) { return a + b; }, 0) / filtered.length) : 0;
+        let bestIdx = 0, worstIdx = 0;
+        rawSavings.forEach(function (v, i) { if (v > rawSavings[bestIdx]) bestIdx = i; if (v < rawSavings[worstIdx]) worstIdx = i; });
+        const statTotal = el('cumdet-stat-total'), statAvg = el('cumdet-stat-avg'), statBest = el('cumdet-stat-best'), statBestL = el('cumdet-stat-best-label'), statWorst = el('cumdet-stat-worst'), statWorstL = el('cumdet-stat-worst-label');
+        if (statTotal) { statTotal.textContent = (lastVal < 0 ? '-' : '+') + '$' + Math.abs(lastVal).toLocaleString('en-US', { maximumFractionDigits: 0 }); statTotal.style.color = lastVal >= 0 ? '#10B981' : '#EF4444'; }
+        if (statAvg) { statAvg.textContent = (avgPerMonth < 0 ? '-' : '+') + '$' + Math.abs(avgPerMonth).toLocaleString('en-US', { maximumFractionDigits: 0 }); statAvg.style.color = avgPerMonth >= 0 ? '#10B981' : '#EF4444'; }
+        if (statBest && rawSavings.length > 0) statBest.textContent = '+$' + Math.abs(rawSavings[bestIdx]).toLocaleString('en-US', { maximumFractionDigits: 0 });
+        if (statBestL && filtered[bestIdx]) statBestL.textContent = labels[bestIdx] || filtered[bestIdx].monthKey;
+        if (statWorst && rawSavings.length > 0) statWorst.textContent = (rawSavings[worstIdx] < 0 ? '-' : '') + '$' + Math.abs(rawSavings[worstIdx]).toLocaleString('en-US', { maximumFractionDigits: 0 });
+        if (statWorstL && filtered[worstIdx]) statWorstL.textContent = labels[worstIdx] || filtered[worstIdx].monthKey;
+
+        // Chart
+        if (_detailChart) { _detailChart.destroy(); _detailChart = null; }
+        const chartCanvas = el('cumdet-chart'), yAxisCanvas = el('cumdet-yaxis');
+        if (!chartCanvas || !yAxisCanvas) return;
+        const CHART_H = 260, Y_AXIS_W = 56;
+        const containerW = chartCanvas.parentElement ? chartCanvas.parentElement.offsetWidth : (window.innerWidth - Y_AXIS_W - 32);
+        chartCanvas.width = containerW; chartCanvas.height = CHART_H; chartCanvas.style.width = containerW + 'px'; chartCanvas.style.height = CHART_H + 'px';
+        yAxisCanvas.width = Y_AXIS_W * DPR; yAxisCanvas.height = CHART_H * DPR; yAxisCanvas.style.width = Y_AXIS_W + 'px'; yAxisCanvas.style.height = CHART_H + 'px';
+        const dMin = Math.min.apply(null, data), dMax = Math.max.apply(null, data), pad = Math.max(Math.abs(dMax - dMin) * 0.12, 200);
+        const yMin = dMin - pad, yMax = dMax + pad;
+
+        function drawDetailYAxis() {
+          var ctx = yAxisCanvas.getContext('2d'); ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, yAxisCanvas.width, yAxisCanvas.height); ctx.scale(DPR, DPR); ctx.fillStyle = textColor; ctx.font = '11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif'; ctx.textAlign = 'right';
+          var steps = 5, top = 12, bottom = CHART_H - 24, h = bottom - top;
+          for (var i = 0; i <= steps; i++) { var val = yMin + (yMax - yMin) * (i / steps), y = bottom - (h * i / steps), abs = Math.abs(val); ctx.fillText((val < 0 ? '-' : '') + '$' + (abs >= 1000 ? (abs / 1000).toFixed(1).replace('.0', '') + 'k' : Math.round(abs)), Y_AXIS_W - 4, y + 4); }
+          ctx.restore();
+        }
+
+        _detailChart = new Chart(chartCanvas, {
+          type: 'line',
+          data: { labels: labels, datasets: [{ label: 'Cumulative Saved', data: data, borderColor: lineColor, backgroundColor: fillColor, fill: true, tension: 0.35, pointRadius: data.length <= 24 ? 4 : 2, pointHoverRadius: 7, pointBackgroundColor: lineColor, pointBorderColor: lineColor, borderWidth: 2.5 }] },
+          options: {
+            responsive: false, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { display: false }, tooltip: { external: function (context) {
+              const tooltipEl = el('cumdet-tooltip'); if (!tooltipEl) return;
+              const tooltip = context.tooltip; if (tooltip.opacity === 0) { tooltipEl.style.display = 'none'; return; }
+              const dp = tooltip.dataPoints && tooltip.dataPoints[0]; if (!dp) return;
+              const v = dp.raw, sign = v >= 0 ? '+' : '-', monthly = rawSavings[dp.dataIndex], mSign = monthly >= 0 ? '+' : '-';
+              tooltipEl.innerHTML = '<strong>' + dp.label + '</strong><br>Total: ' + sign + '$' + Math.abs(v).toLocaleString('en-US', { maximumFractionDigits: 0 }) + '<br><span style="font-size:11px;color:' + (monthly >= 0 ? '#10B981' : '#EF4444') + ';">This month: ' + mSign + '$' + Math.abs(monthly).toLocaleString('en-US', { maximumFractionDigits: 0 }) + '</span>';
+              tooltipEl.style.display = 'block';
+              var left = tooltip.caretX + Y_AXIS_W + 8; if (left + 160 > containerW + Y_AXIS_W) left = tooltip.caretX + Y_AXIS_W - 168;
+              tooltipEl.style.left = left + 'px'; tooltipEl.style.top = '8px';
+            } } },
+            scales: { x: { grid: { display: false }, ticks: { color: textColor, maxRotation: 0, autoSkip: true, maxTicksLimit: 12, font: { size: 11 } } }, y: { min: yMin, max: yMax, grid: { color: gridColor }, ticks: { display: false } } },
+            animation: { onComplete: function () { drawDetailYAxis(); } },
+          },
+        });
+
+        // Monthly breakdown list
+        const listEl = el('cumdet-monthly-list');
+        if (listEl) {
+          listEl.innerHTML = filtered.slice().reverse().map(function (s, revIdx) {
+            const origIdx = filtered.length - 1 - revIdx, savings = rawSavings[origIdx] || 0, cumVal = data[origIdx] || 0;
+            const mk = s.monthKey || '', parts = mk.split('-');
+            const d = parts.length === 2 ? new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, 1) : null;
+            const mLabel = d ? d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : mk;
+            const sColor = savings >= 0 ? '#10B981' : '#EF4444', sSign = savings >= 0 ? '+' : '-';
+            return '<div style="display:flex;align-items:center;padding:10px 0;border-bottom:0.5px solid var(--separator);"><div style="flex:1;"><div style="font-size:14px;font-weight:600;color:var(--text-primary);">' + mLabel + '</div><div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">Cumulative: ' + (cumVal < 0 ? '-' : '+') + '$' + Math.abs(cumVal).toLocaleString('en-US', { maximumFractionDigits: 0 }) + '</div></div><div style="font-size:16px;font-weight:700;color:' + sColor + ';">' + sSign + '$' + Math.abs(savings).toLocaleString('en-US', { maximumFractionDigits: 0 }) + '</div></div>';
+          }).join('');
+        }
+      } catch (err) {
+        console.error('[AnalyticsScreen] _renderCumulativeDetail failed:', err);
+      }
     },
 
     // ── _openDrilldown ────────────────────────────────────────────────────────
@@ -1252,45 +1438,6 @@
           });
           break;
 
-        case 'cumulative':
-          openDrilldown('Cumulative Net Saved', function (container) {
-            // Subtitle
-            const subtitle = document.createElement('p');
-            subtitle.style.cssText = 'font-size:13px;color:var(--text-secondary);margin-bottom:16px;';
-            subtitle.textContent = 'Running total of net savings (income − expenses) across all months.';
-            container.appendChild(subtitle);
-
-            renderDrillLineChart(container, {
-              datasets: function (filtered) {
-                // Build cumulative running total from the filtered summaries
-                let running = 0;
-                const cumulativeData = filtered.map(function (s) {
-                  running += (s.netSavings || 0);
-                  return Math.round(running * 100) / 100;
-                });
-
-                const lastVal   = cumulativeData[cumulativeData.length - 1] || 0;
-                const lineColor = lastVal >= 0 ? '#10B981' : '#EF4444';
-                const fillColor = lastVal >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.08)';
-
-                return [{
-                  label: 'Cumulative Saved',
-                  data: cumulativeData,
-                  borderColor: lineColor,
-                  backgroundColor: fillColor,
-                  fill: true,
-                  tension: 0.4,
-                  pointRadius: 5,
-                  pointHoverRadius: 8,
-                  pointBackgroundColor: lineColor,
-                }];
-              },
-              yFormat: function (v) {
-                return (v < 0 ? '−' : '') + '$' + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1) + 'k' : Math.abs(v));
-              },
-            });
-          });
-          break;
       }
     },
 
@@ -1445,8 +1592,10 @@
     // ── renderCumulativeSavingsChart ──────────────────────────────────────────
 
     /**
-     * Renders a cumulative net saved line chart using ALL monthly summaries.
-     * Shows the running total of savings from the first month to the most recent.
+     * Renders the dynamic scrollable cumulative net saved chart on the analytics
+     * home page. Uses the same layout as the old dashboard version:
+     *   [sticky y-axis canvas | scrollable chart canvas]
+     * The y-axis updates dynamically as the user scrolls (rAF-throttled).
      * @param {object[]} summaries  All monthly summaries sorted ascending
      */
     renderCumulativeSavingsChart: function (summaries) {
@@ -1454,84 +1603,128 @@
 
       const container = el('cumulative-chart-container');
       if (!container) return;
-      container.innerHTML = '<canvas id="cumulative-chart" style="display:block;width:100%;height:180px;"></canvas>';
-      const canvas = el('cumulative-chart');
 
       if (!summaries || summaries.length < 2) {
         container.innerHTML = '<p style="text-align:center;color:var(--text-secondary);font-size:13px;padding:40px 0;">Need at least 2 months of data</p>';
         return;
       }
 
-      const { gridColor, textColor } = getChartColors();
+      // Replace container contents with the scrollable layout
+      container.innerHTML =
+        '<div style="display:flex;align-items:stretch;height:180px;">' +
+          '<canvas id="cumulative-yaxis" style="flex-shrink:0;width:52px;height:180px;display:block;"></canvas>' +
+          '<div id="cumulative-scroll-wrapper" style="flex:1;overflow-x:auto;-webkit-overflow-scrolling:touch;">' +
+            '<div id="cumulative-inner" style="position:relative;height:180px;min-width:100%;">' +
+              '<canvas id="cumulative-chart" style="display:block;height:180px;"></canvas>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+
+      const canvas      = el('cumulative-chart');
+      const innerEl     = el('cumulative-inner');
+      const yAxisCanvas = el('cumulative-yaxis');
+      const scrollWrapper = el('cumulative-scroll-wrapper');
+      if (!canvas || !innerEl || !yAxisCanvas || !scrollWrapper) return;
+
+      const isDark    = document.documentElement.getAttribute('data-theme') === 'dark';
+      const textColor = isDark ? '#94A3B8' : '#6B7280';
+      const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+
+      const Y_AXIS_W   = 52;
+      const CHART_H    = 180;
+      const MONTHS_VIS = 12;
+      const DPR        = window.devicePixelRatio || 1;
 
       // Build cumulative running total
-      let runningTotal = 0;
-      const labels = [];
-      const data   = [];
+      let running = 0;
+      const labels = [], data = [];
       summaries.forEach(function (s) {
-        runningTotal += (s.netSavings || 0);
+        running += (s.netSavings || 0);
         labels.push(monthKeyToShort(s.monthKey));
-        data.push(Math.round(runningTotal * 100) / 100);
+        data.push(Math.round(running * 100) / 100);
       });
 
-      // Color: green if positive trend, red if negative
-      const lastVal  = data[data.length - 1] || 0;
+      const lastVal   = data[data.length - 1] || 0;
       const lineColor = lastVal >= 0 ? '#10B981' : '#EF4444';
-      const fillColor = lastVal >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.08)';
+      const fillColor = lastVal >= 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.10)';
 
-      if (container && container.offsetWidth > 0) {
-        canvas.width  = container.offsetWidth;
-        canvas.height = 180;
+      // Sizing
+      const parentW = scrollWrapper.offsetWidth || Math.max(200, window.innerWidth - Y_AXIS_W - 48);
+      const ptW     = Math.floor(parentW / MONTHS_VIS);
+      const chartW  = Math.max(parentW, labels.length * ptW);
+
+      canvas.width  = chartW; canvas.height = CHART_H;
+      canvas.style.width = chartW + 'px'; canvas.style.height = CHART_H + 'px';
+      yAxisCanvas.width  = Y_AXIS_W * DPR; yAxisCanvas.height = CHART_H * DPR;
+      yAxisCanvas.style.width = Y_AXIS_W + 'px'; yAxisCanvas.style.height = CHART_H + 'px';
+      innerEl.style.width = chartW + 'px'; innerEl.style.height = CHART_H + 'px';
+
+      // Compute visible range for y-axis
+      function getVisibleRange(scrollLeft) {
+        var sw = scrollWrapper.offsetWidth || parentW;
+        var firstIdx = Math.max(0, Math.floor(scrollLeft / ptW) - 1);
+        var lastIdx  = Math.min(data.length - 1, Math.ceil((scrollLeft + sw) / ptW));
+        var vis = data.slice(firstIdx, lastIdx + 1);
+        if (vis.length === 0) vis = data;
+        var vMin = Math.min.apply(null, vis), vMax = Math.max.apply(null, vis);
+        var pad  = Math.max(Math.abs(vMax - vMin) * 0.15, 200);
+        return { minVal: vMin - pad, maxVal: vMax + pad };
+      }
+
+      var initScrollLeft = Math.max(0, chartW - parentW);
+      var initRange = getVisibleRange(initScrollLeft);
+
+      function drawYAxis(curMin, curMax) {
+        var ctx = yAxisCanvas.getContext('2d');
+        ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, yAxisCanvas.width, yAxisCanvas.height);
+        ctx.scale(DPR, DPR); ctx.fillStyle = textColor;
+        ctx.font = '11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif';
+        ctx.textAlign = 'right';
+        var steps = 4, top = 12, bottom = CHART_H - 24, h = bottom - top;
+        for (var i = 0; i <= steps; i++) {
+          var val = curMin + (curMax - curMin) * (i / steps);
+          var y   = bottom - (h * i / steps);
+          var abs = Math.abs(val);
+          ctx.fillText((val < 0 ? '-' : '') + '$' + (abs >= 1000 ? (abs / 1000).toFixed(1).replace('.0', '') + 'k' : Math.round(abs)), Y_AXIS_W - 4, y + 4);
+        }
+        ctx.restore();
       }
 
       _cumulativeChart = new Chart(canvas, {
         type: 'line',
-        data: {
-          labels: labels,
-          datasets: [{
-            label: 'Cumulative Saved',
-            data: data,
-            borderColor: lineColor,
-            backgroundColor: fillColor,
-            fill: true,
-            tension: 0.4,
-            pointRadius: 3,
-            pointHoverRadius: 6,
-            pointBackgroundColor: lineColor,
-          }],
-        },
+        data: { labels: labels, datasets: [{ label: 'Cumulative Saved', data: data, borderColor: lineColor, backgroundColor: fillColor, fill: true, tension: 0.4, pointRadius: 4, pointHoverRadius: 7, pointBackgroundColor: lineColor, pointBorderColor: lineColor, borderWidth: 2.5 }] },
         options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              callbacks: {
-                label: function (ctx) {
-                  var val = ctx.raw;
-                  return ' ' + (val < 0 ? '−' : '') + formatCurrency(Math.abs(val));
-                },
-              },
-            },
-          },
+          responsive: false, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: function (ctx) { var v = ctx.raw; return ' ' + (v < 0 ? '-' : '+') + formatCurrency(Math.abs(v)); }, title: function (items) { return items[0] ? items[0].label : ''; } } } },
           scales: {
-            x: {
-              grid: { display: false },
-              ticks: { color: textColor, maxRotation: 0, maxTicksLimit: 8 },
-            },
-            y: {
-              grid: { color: gridColor },
-              ticks: {
-                color: textColor,
-                callback: function (v) {
-                  return (v < 0 ? '−' : '') + '$' + (Math.abs(v) / 1000).toFixed(0) + 'k';
-                },
-              },
-            },
+            x: { grid: { display: false }, ticks: { color: textColor, maxRotation: 0, autoSkip: true, maxTicksLimit: MONTHS_VIS, font: { size: 11 } } },
+            y: { min: initRange.minVal, max: initRange.maxVal, grid: { color: gridColor }, ticks: { display: false } },
           },
+          animation: { onComplete: function () { drawYAxis(initRange.minVal, initRange.maxVal); } },
         },
       });
-      requestAnimationFrame(function () { if (_cumulativeChart) _cumulativeChart.resize(); });
+
+      // Scroll to most recent + wire dynamic y-axis
+      requestAnimationFrame(function () {
+        scrollWrapper.scrollLeft = scrollWrapper.scrollWidth;
+        drawYAxis(initRange.minVal, initRange.maxVal);
+
+        var scrollTimer = null;
+        scrollWrapper.addEventListener('scroll', function () {
+          clearTimeout(scrollTimer);
+          scrollTimer = setTimeout(function () {
+            var range = getVisibleRange(scrollWrapper.scrollLeft);
+            if (_cumulativeChart) {
+              _cumulativeChart.options.scales.y.min = range.minVal;
+              _cumulativeChart.options.scales.y.max = range.maxVal;
+              _cumulativeChart.update('none');
+            }
+            drawYAxis(range.minVal, range.maxVal);
+          }, 60);
+        }, { passive: true });
+      });
     },
 
     renderTopMerchants: function (transactions, catMap) {
