@@ -319,12 +319,16 @@
     // Rendering during the animation causes Chart.js to measure wrong canvas dimensions
     // because the overlay is still off-screen / partially translated.
     setTimeout(function () {
+      // Prevent browser scroll anchoring from moving content.scrollTop
+      content.style.overflowAnchor = 'none';
       content.scrollTop = 0;
       renderFn(content);
-      // Ensure scroll is at top after chart DOM is built
-      requestAnimationFrame(function () {
+      content.scrollTop = 0;
+      // The chart's internal rAF sets scrollLeft on the inner scroll wrapper.
+      // Wait for all rAF chains to complete before final scroll reset.
+      setTimeout(function () {
         content.scrollTop = 0;
-      });
+      }, 100);
     }, 340);
   }
 
@@ -435,7 +439,7 @@
 
     // Scrollable chart area
     const scrollWrapper = document.createElement('div');
-    scrollWrapper.style.cssText = 'flex:1;overflow-x:auto;-webkit-overflow-scrolling:touch;';
+    scrollWrapper.style.cssText = 'flex:1;overflow-x:auto;-webkit-overflow-scrolling:touch;overflow-anchor:none;';
     const innerWrapper = document.createElement('div');
     innerWrapper.style.cssText = 'position:relative;height:260px;min-width:100%;';
     const canvas = document.createElement('canvas');
@@ -681,7 +685,7 @@
 
     // Scrollable bars area
     const scrollWrapper = document.createElement('div');
-    scrollWrapper.style.cssText = 'flex:1;overflow-x:auto;-webkit-overflow-scrolling:touch;';
+    scrollWrapper.style.cssText = 'flex:1;overflow-x:auto;-webkit-overflow-scrolling:touch;overflow-anchor:none;';
     const innerWrapper = document.createElement('div');
     innerWrapper.style.cssText = 'position:relative;height:260px;min-width:100%;';
     const canvas = document.createElement('canvas');
