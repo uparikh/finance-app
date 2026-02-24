@@ -315,12 +315,17 @@
     overlay.addEventListener('touchmove',  _onTouchMove,  { passive: false }); // passive:false needed for preventDefault
     overlay.addEventListener('touchend',   _onTouchEnd,   { passive: true });
 
-    // Give the DOM a frame to paint before rendering the chart
-    requestAnimationFrame(function () {
+    // Wait for the slide-in animation to complete (320ms) before rendering the chart.
+    // Rendering during the animation causes Chart.js to measure wrong canvas dimensions
+    // because the overlay is still off-screen / partially translated.
+    setTimeout(function () {
+      content.scrollTop = 0;
+      renderFn(content);
+      // Ensure scroll is at top after chart DOM is built
       requestAnimationFrame(function () {
-        renderFn(content);
+        content.scrollTop = 0;
       });
-    });
+    }, 340);
   }
 
   /**
@@ -756,12 +761,12 @@
       (colors || []).forEach(function (c, i) {
         var isOOS = realRates && cap && Math.abs(realRates[i]) > cap;
         if (isOOS) {
-          // 25% opacity fill — clearly lighter than solid bars
+          // No fill — fully transparent background, dashed border only
           var baseColor = getSavingsRateColor(realRates[i]);
-          bgColors.push(baseColor.replace(')', ',0.25)').replace('rgb(', 'rgba('));
+          bgColors.push('transparent');
           borderColors.push(baseColor);
-          borderWidths.push(1.5);
-          borderDashes.push([4, 3]); // used as OOS marker (no hatch drawn)
+          borderWidths.push(2);
+          borderDashes.push([4, 3]);
         } else {
           bgColors.push(c || opts.barColor || '#6C63FF');
           borderColors.push('transparent');
@@ -1377,7 +1382,7 @@
             // Add a legend note about the cap
             const capNote = document.createElement('p');
             capNote.style.cssText = 'font-size:11px;color:var(--text-secondary);margin-bottom:8px;';
-            capNote.textContent = 'Bars capped at ' + CAP + '%. Dotted border = not to scale.';
+            capNote.textContent = 'Bars capped at ' + CAP + '%. Empty bar (outline only) = not to scale.';
             container.appendChild(capNote);
 
             renderDrillBarChart(container, {

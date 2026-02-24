@@ -1380,6 +1380,12 @@ input:checked + .toggle-slider {
   color: var(--success);
 }
 
+.radio-option.selected-transfer {
+  border-color: #95A5A6;
+  background: rgba(149, 165, 166, 0.12);
+  color: #95A5A6;
+}
+
 /* ── Toast Notification — glass pill ────────────────────────────────────── */
 .toast {
   position: fixed;

@@ -754,12 +754,19 @@
       }
 
       container.innerHTML = transactions.map(function (txn) {
-        const cat    = catMap[txn.categoryId] || {};
-        const emoji  = cat.emoji || '📦';
-        const amt    = txn.amount || 0;
-        const isPos  = amt >= 0;
-        const amtStr = (isPos ? '+' : '-') + formatCurrency(amt);
-        const color  = isPos ? 'var(--success)' : 'var(--danger)';
+        const cat        = catMap[txn.categoryId] || {};
+        const emoji      = cat.emoji || '📦';
+        const amt        = txn.amount || 0;
+        const isTransfer = txn.categoryId === 'transfer';
+        const isPos      = amt >= 0;
+        let amtStr, color;
+        if (isTransfer) {
+          amtStr = '~' + formatCurrency(amt);
+          color  = 'var(--text-tertiary, #9CA3AF)';
+        } else {
+          amtStr = (isPos ? '+' : '-') + formatCurrency(amt);
+          color  = isPos ? 'var(--success)' : 'var(--danger)';
+        }
         const merchant = txn.merchantName || txn.description || 'Unknown';
         const dateStr  = formatDate(txn.date);
 

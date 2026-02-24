@@ -592,6 +592,7 @@
           '<div class="radio-group">' +
             '<div id="txn-edit-type-expense" class="radio-option selected-expense" role="radio" aria-checked="true" tabindex="0">💸 Expense</div>' +
             '<div id="txn-edit-type-income" class="radio-option" role="radio" aria-checked="false" tabindex="0">💰 Income</div>' +
+            '<div id="txn-edit-type-transfer" class="radio-option" role="radio" aria-checked="false" tabindex="0">🔄 Transfer</div>' +
           '</div>' +
         '</div>' +
         '<div class="form-group">' +
@@ -625,45 +626,75 @@
     }
 
     // Wire up sheet controls
-    const backdrop = el('txn-edit-sheet-backdrop');
-    const closeBtn = el('txn-edit-sheet-close');
-    const cancelBtn = el('txn-edit-sheet-cancel');
-    const saveBtn   = el('txn-edit-sheet-save');
-    const deleteBtn = el('txn-edit-sheet-delete');
-    const incomeOpt  = el('txn-edit-type-income');
-    const expenseOpt = el('txn-edit-type-expense');
+    const backdrop     = el('txn-edit-sheet-backdrop');
+    const closeBtn     = el('txn-edit-sheet-close');
+    const cancelBtn    = el('txn-edit-sheet-cancel');
+    const saveBtn      = el('txn-edit-sheet-save');
+    const deleteBtn    = el('txn-edit-sheet-delete');
+    const incomeOpt    = el('txn-edit-type-income');
+    const expenseOpt   = el('txn-edit-type-expense');
+    const transferOpt  = el('txn-edit-type-transfer');
+    const catSelect    = el('txn-edit-category-select');
 
-    if (backdrop)   backdrop.addEventListener('click', _closeTxnEditSheet);
-    if (closeBtn)   closeBtn.addEventListener('click', _closeTxnEditSheet);
-    if (cancelBtn)  cancelBtn.addEventListener('click', _closeTxnEditSheet);
-    if (saveBtn)    saveBtn.addEventListener('click', saveEdit);
-    if (deleteBtn)  deleteBtn.addEventListener('click', function () {
+    if (backdrop)    backdrop.addEventListener('click', _closeTxnEditSheet);
+    if (closeBtn)    closeBtn.addEventListener('click', _closeTxnEditSheet);
+    if (cancelBtn)   cancelBtn.addEventListener('click', _closeTxnEditSheet);
+    if (saveBtn)     saveBtn.addEventListener('click', saveEdit);
+    if (deleteBtn)   deleteBtn.addEventListener('click', function () {
       if (_editingId !== null) deleteTransaction(_editingId);
     });
-    if (incomeOpt)  incomeOpt.addEventListener('click', function () { _setTxnAmountType('income'); });
-    if (expenseOpt) expenseOpt.addEventListener('click', function () { _setTxnAmountType('expense'); });
+    if (incomeOpt)   incomeOpt.addEventListener('click', function () { _setTxnAmountType('income'); });
+    if (expenseOpt)  expenseOpt.addEventListener('click', function () { _setTxnAmountType('expense'); });
+    if (transferOpt) transferOpt.addEventListener('click', function () { _setTxnAmountType('transfer'); });
+
+    // Auto-switch type when category changes
+    if (catSelect) {
+      catSelect.addEventListener('change', function () {
+        const selectedCat = catSelect.value;
+        if (selectedCat === 'transfer') {
+          _setTxnAmountType('transfer');
+        } else if (selectedCat === 'income') {
+          _setTxnAmountType('income');
+        } else {
+          // Only switch away from transfer if user picks a non-transfer category
+          const transferEl = el('txn-edit-type-transfer');
+          if (transferEl && transferEl.hasAttribute('data-selected')) {
+            _setTxnAmountType('expense');
+          }
+        }
+      });
+    }
   }
 
   function _setTxnAmountType(type) {
-    const incomeOpt  = el('txn-edit-type-income');
-    const expenseOpt = el('txn-edit-type-expense');
+    const incomeOpt   = el('txn-edit-type-income');
+    const expenseOpt  = el('txn-edit-type-expense');
+    const transferOpt = el('txn-edit-type-transfer');
     if (!incomeOpt || !expenseOpt) return;
 
-    incomeOpt.classList.remove('selected-income', 'selected-expense');
-    expenseOpt.classList.remove('selected-income', 'selected-expense');
+    // Clear all selections
+    [incomeOpt, expenseOpt, transferOpt].forEach(function (opt) {
+      if (!opt) return;
+      opt.classList.remove('selected-income', 'selected-expense', 'selected-transfer');
+      opt.removeAttribute('data-selected');
+      opt.setAttribute('aria-checked', 'false');
+    });
 
     if (type === 'income') {
       incomeOpt.classList.add('selected-income');
       incomeOpt.setAttribute('data-selected', 'true');
       incomeOpt.setAttribute('aria-checked', 'true');
-      expenseOpt.removeAttribute('data-selected');
-      expenseOpt.setAttribute('aria-checked', 'false');
+    } else if (type === 'transfer') {
+      if (transferOpt) {
+        transferOpt.classList.add('selected-transfer');
+        transferOpt.setAttribute('data-selected', 'true');
+        transferOpt.setAttribute('aria-checked', 'true');
+      }
     } else {
+      // expense (default)
       expenseOpt.classList.add('selected-expense');
       expenseOpt.setAttribute('data-selected', 'true');
       expenseOpt.setAttribute('aria-checked', 'true');
-      incomeOpt.removeAttribute('data-selected');
-      incomeOpt.setAttribute('aria-checked', 'false');
     }
   }
 
@@ -718,8 +749,12 @@
       if (dateInput)   dateInput.value   = _formatDateFull(txn.date);
       if (notesInput)  notesInput.value  = txn.notes || '';
 
-      // Set income/expense toggle
-      _setTxnAmountType((txn.amount || 0) >= 0 ? 'income' : 'expense');
+      // Set income/expense/transfer toggle
+      if (txn.categoryId === 'transfer') {
+        _setTxnAmountType('transfer');
+      } else {
+        _setTxnAmountType((txn.amount || 0) >= 0 ? 'income' : 'expense');
+      }
 
       // Populate category dropdown
       await _populateTxnCategoryDropdown(txn.categoryId);
@@ -772,12 +807,14 @@
     const catSelect   = el('txn-edit-category-select');
     const incomeOpt   = el('txn-edit-type-income');
 
-    const merchantName = nameInput   ? nameInput.value.trim()   : '';
-    const amountRaw    = amountInput ? parseFloat(amountInput.value) : 0;
-    const dateRaw      = dateInput   ? dateInput.value.trim()   : '';
-    const notes        = notesInput  ? notesInput.value.trim()  : '';
-    const categoryId   = catSelect   ? catSelect.value          : 'other';
-    const isIncome     = incomeOpt   ? incomeOpt.hasAttribute('data-selected') : false;
+    const merchantName  = nameInput   ? nameInput.value.trim()   : '';
+    const amountRaw     = amountInput ? parseFloat(amountInput.value) : 0;
+    const dateRaw       = dateInput   ? dateInput.value.trim()   : '';
+    const notes         = notesInput  ? notesInput.value.trim()  : '';
+    const categoryId    = catSelect   ? catSelect.value          : 'other';
+    const transferOpt   = el('txn-edit-type-transfer');
+    const isTransfer    = transferOpt ? transferOpt.hasAttribute('data-selected') : false;
+    const isIncome      = !isTransfer && (incomeOpt ? incomeOpt.hasAttribute('data-selected') : false);
 
     // Validate amount
     if (isNaN(amountRaw) || amountRaw < 0) {
@@ -799,9 +836,18 @@
       originalCategory = orig ? (orig.categoryId || null) : null;
     } catch (e) { /* ignore */ }
 
-    const parsedDate   = _parseDateToISO(dateRaw, originalDate);
-    const storedAmount = isIncome ? Math.abs(amountRaw) : -Math.abs(amountRaw);
-    const monthKey     = parsedDate ? parsedDate.slice(0, 7) : (_currentMonthKey || '');
+    const parsedDate = _parseDateToISO(dateRaw, originalDate);
+    const monthKey   = parsedDate ? parsedDate.slice(0, 7) : (_currentMonthKey || '');
+
+    // Transfers are stored as negative (outflow) but excluded from income/expense totals
+    let storedAmount;
+    if (isTransfer) {
+      storedAmount = -Math.abs(amountRaw);
+    } else if (isIncome) {
+      storedAmount = Math.abs(amountRaw);
+    } else {
+      storedAmount = -Math.abs(amountRaw);
+    }
 
     const changes = {
       merchantName:     merchantName || undefined,
@@ -811,6 +857,7 @@
       categoryId:       categoryId,
       notes:            notes,
       isIncome:         isIncome,
+      isTransfer:       isTransfer,
       isManuallyEdited: true,
     };
 
