@@ -182,10 +182,10 @@
   <!-- ── Drill-Down Overlay ────────────────────────────────────────────── -->
   <!-- Slides in over the analytics screen when a metric is tapped -->
   <div id="analytics-drilldown" style="
-    position: absolute;
+    position: fixed;
     inset: 0;
     background: var(--bg-primary);
-    z-index: 20;
+    z-index: 200;
     display: none;
     flex-direction: column;
     overflow: hidden;
@@ -215,10 +215,10 @@
   <!-- Full-screen Google Stocks-style drill-down for cumulative savings.   -->
   <!-- Opened when the cumulative preview card is tapped.                   -->
   <div id="cumulative-detail-overlay" style="
-    position: absolute;
+    position: fixed;
     inset: 0;
     background: var(--bg-primary);
-    z-index: 25;
+    z-index: 210;
     display: none;
     flex-direction: column;
     overflow: hidden;

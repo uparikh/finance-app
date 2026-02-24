@@ -187,14 +187,7 @@
     // Clear content
     content.innerHTML = '';
 
-    // Lock the parent screen's scroll to prevent scroll-through
-    const parentScreen = el('screen-analytics');
-    if (parentScreen) {
-      parentScreen._savedScrollTop = parentScreen.scrollTop;
-      parentScreen.style.overflow = 'hidden';
-    }
-
-    // Show overlay — start off-screen right, slide in (Fix 1: use opacity+transform, hide immediately on close)
+    // Show overlay — start off-screen right, slide in
     overlay.style.transition = 'none';
     overlay.style.transform  = 'translateX(100%)';
     overlay.style.opacity    = '0';
@@ -341,16 +334,6 @@
   function _finishCloseDrilldown() {
     const overlay = el('analytics-drilldown');
 
-    // Restore parent screen scroll IMMEDIATELY — removes frosted effect
-    const parentScreen = el('screen-analytics');
-    if (parentScreen) {
-      parentScreen.style.overflow = '';
-      if (parentScreen._savedScrollTop !== undefined) {
-        parentScreen.scrollTop = parentScreen._savedScrollTop;
-      }
-    }
-
-    // Opacity already set to 0 by the caller (swipe or closeDrilldown)
     // Hide and clean up after animation
     setTimeout(function () {
       if (overlay) {
@@ -384,11 +367,6 @@
     overlay.style.opacity    = '1';
     overlay.style.display    = 'none';
     _removeDrillGestureListeners(overlay);
-
-    const parentScreen = el('screen-analytics');
-    if (parentScreen) {
-      parentScreen.style.overflow = '';
-    }
     _drillChart = destroyChart(_drillChart);
   }
 
@@ -1084,10 +1062,6 @@
       const overlay = el('cumulative-detail-overlay');
       if (!overlay) return;
 
-      // Lock parent screen scroll
-      const parentScreen = el('screen-analytics');
-      if (parentScreen) { parentScreen._savedScrollTopCum = parentScreen.scrollTop; parentScreen.style.overflow = 'hidden'; }
-
       // Slide in
       overlay.style.transition = 'none';
       overlay.style.transform  = 'translateX(100%)';
@@ -1135,7 +1109,7 @@
         overlay.style.transition = 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease';
         if (_g.direction === 'horizontal' && dx > 0 && _g.edgeSwipe && dx > w * 0.4) {
           overlay.style.transform = 'translateX(100%)'; overlay.style.opacity = '0';
-          setTimeout(function () { overlay.style.display = 'none'; overlay.style.opacity = '1'; overlay.style.transition = 'none'; var ps = el('screen-analytics'); if (ps) { ps.style.overflow = ''; if (ps._savedScrollTopCum !== undefined) ps.scrollTop = ps._savedScrollTopCum; } }, 300);
+          setTimeout(function () { overlay.style.display = 'none'; overlay.style.opacity = '1'; overlay.style.transition = 'none'; }, 300);
         } else { overlay.style.transform = 'translateX(0)'; overlay.style.opacity = '1'; }
       }
       if (overlay._cumTS) { overlay.removeEventListener('touchstart', overlay._cumTS); overlay.removeEventListener('touchmove', overlay._cumTM); overlay.removeEventListener('touchend', overlay._cumTE); }
@@ -1154,7 +1128,6 @@
       overlay.style.transform  = 'translateX(100%)';
       setTimeout(function () {
         overlay.style.display = 'none'; overlay.style.transition = 'none';
-        var ps = el('screen-analytics'); if (ps) { ps.style.overflow = ''; if (ps._savedScrollTopCum !== undefined) ps.scrollTop = ps._savedScrollTopCum; }
         if (_detailChart) { _detailChart.destroy(); _detailChart = null; }
       }, 300);
     },

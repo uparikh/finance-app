@@ -393,11 +393,20 @@ function extractStatementPeriod(text) {
       if (mm && yyyy) return { month: mm, year: yyyy, monthKey: `${yyyy}-${pad2(mm)}` };
     }
 
-    // Pattern 2: "Billing Period: 01/01/2026 - 01/31/2026"
-    const p2 = text.match(/billing\s+period[:\s]+(\d{2})\/(\d{2})\/(\d{4})/i);
+    // Pattern 2: "Billing Period: 11/21/2025 - 12/20/2025"
+    // Use the END date (second date) to get the correct statement month.
+    // e.g. billing period 11/21–12/20 → statement month is December (12).
+    const p2 = text.match(/billing\s+period[:\s]+\d{2}\/\d{2}\/\d{4}\s*[-–]\s*(\d{2})\/\d{2}\/(\d{4})/i);
     if (p2) {
       const mm = parseInt(p2[1], 10);
-      const yyyy = parseInt(p2[3], 10);
+      const yyyy = parseInt(p2[2], 10);
+      return { month: mm, year: yyyy, monthKey: `${yyyy}-${pad2(mm)}` };
+    }
+    // Pattern 2b: "Billing Period: 01/01/2026" (single date — use it directly)
+    const p2b = text.match(/billing\s+period[:\s]+(\d{2})\/(\d{2})\/(\d{4})/i);
+    if (p2b) {
+      const mm = parseInt(p2b[1], 10);
+      const yyyy = parseInt(p2b[3], 10);
       return { month: mm, year: yyyy, monthKey: `${yyyy}-${pad2(mm)}` };
     }
 
@@ -474,6 +483,16 @@ function cleanMerchantName(rawDescription) {
 
   let name = rawDescription.trim();
 
+  // ── Step 0: Check MERCHANT_DISPLAY_NAMES on the RAW description first ────
+  // This catches known chains like "TACO BELL 031344 RENTON WA" → "Taco Bell"
+  // BEFORE any stripping that might corrupt the name.
+  const rawLower = name.toLowerCase();
+  for (const [key, displayName] of Object.entries(MERCHANT_DISPLAY_NAMES)) {
+    if (rawLower.includes(key.toLowerCase())) {
+      return displayName;
+    }
+  }
+
   // ── Step 1: Strip payment-network / aggregator prefixes ──────────────────
   // These prefixes are added by Square, Toast, PayPal, Apple Pay, DoorDash, etc.
   // and carry no useful merchant information.
@@ -511,18 +530,14 @@ function cleanMerchantName(rawDescription) {
   name = name.replace(/\s+(?:No\.?|Store|Loc\.?|Ste\.?)\s*\d+/gi, ''); // No. 123, Store 456
 
   // ── Step 5: Strip trailing city + 2-letter state ──────────────────────────
-  // e.g. "STARBUCKS SEATTLE WA"       → "STARBUCKS"
+  // e.g. "STARBUCKS SEATTLE WA"             → "STARBUCKS"
   // e.g. "8E8 THAI STREET FO LOS ANGELES CA" → "8E8 THAI STREET FO"
   // e.g. "ONEZO - LONG BEAC LONG BEACH CA"   → "ONEZO - LONG BEAC"
-  // Pattern: one or more WORD(S) followed by a 2-letter state code at end of string.
-  // We allow multi-word city names (e.g. "LOS ANGELES", "LONG BEACH").
-  name = name.replace(/\s+(?:[A-Z][A-Z\s]{0,20}?\s+)?[A-Z]{2}\s*$/g, (match, offset) => {
-    // Only strip if the match looks like "CITY ST" — state must be exactly 2 uppercase letters
-    const trimmed = match.trim();
-    // Confirm last 2 chars are a state abbreviation (all caps, exactly 2 letters)
-    if (/^[A-Z]{2}$/.test(trimmed.slice(-2))) return '';
-    return match;
-  });
+  //
+  // SAFE pattern: only strip "CITY STATE" where CITY is 3+ uppercase letters
+  // (not a single word like "BELL" which is part of "TACO BELL").
+  // Require at least one space before the city, and city must be ≥3 chars.
+  name = name.replace(/\s+[A-Z]{3,}(?:\s+[A-Z]{3,})*\s+[A-Z]{2}\s*$/, '');
 
   // ── Step 6: Strip trailing standalone numbers (location codes) ────────────
   // e.g. "STARBUCKS 12345" → "STARBUCKS"
@@ -533,9 +548,9 @@ function cleanMerchantName(rawDescription) {
   // e.g. "THAI STREET FO" — "FO" is a truncation of "FOOD"
   // We leave these in place since they're part of the name; title-casing handles them.
 
-  // ── Step 8: Check MERCHANT_DISPLAY_NAMES for known-chain normalization ────
-  // Do this AFTER stripping prefixes/numbers so "CHIPOTLE 0679" becomes "CHIPOTLE"
-  // before we check the map.
+  // ── Step 8: Check MERCHANT_DISPLAY_NAMES again after stripping ───────────
+  // Catches cases where the prefix was hiding the merchant name,
+  // e.g. "SQ *CHIPOTLE 0679 LAKEWOOD CA" → after stripping → "CHIPOTLE" → "Chipotle"
   const lower = name.toLowerCase().trim();
   for (const [key, displayName] of Object.entries(MERCHANT_DISPLAY_NAMES)) {
     if (lower.includes(key.toLowerCase())) {
@@ -1448,37 +1463,55 @@ function parseDiscover(text, pages) {
     //
     //   D) Score inline at end: "FICO Score 8 based on TransUnion data: 798"
     //
-    // Strategy: find the word "fico" in the text, then search a ±200 char window
-    // around it for any 3-digit number in the 300-850 range.
+    // Strategy:
+    //   1. First try to find the specific "FICO Score 8 based on TransUnion data" phrase
+    //      (most reliable anchor — unique to the FICO section)
+    //   2. Fall back to searching ALL "fico" occurrences and checking each window
+    //      for a plausible 3-digit score
 
-    const ficoIdx = text.toLowerCase().indexOf('fico');
-    if (ficoIdx !== -1) {
-      // Extract a generous window around the FICO mention
-      const wStart  = Math.max(0, ficoIdx - 50);
-      const wEnd    = Math.min(text.length, ficoIdx + 300);
-      const wText   = text.slice(wStart, wEnd);
+    const lowerText = text.toLowerCase();
 
-      console.log('[Parser] Discover: FICO window text:', JSON.stringify(wText));
-
-      // Find all 3-digit numbers in the window that are plausible FICO scores.
-      // Use a pattern that captures the character before the number so we can
-      // exclude store numbers (#582), dates (03/04), decimals (1.798), amounts ($798).
-      const candidates = [];
+    // Helper: scan a text window for a plausible FICO score (300-850)
+    // excluding numbers preceded by #, /, ., $, or another digit
+    function _findScoreInWindow(wText) {
       const numRegex = /([#\/\.\$\d]?)([3-8]\d{2})(?!\d)/g;
       let m;
       while ((m = numRegex.exec(wText)) !== null) {
         const prefix = m[1];
         const val    = parseInt(m[2], 10);
-        // Skip if preceded by a digit, #, /, ., or $
         if (prefix && /[#\/\.\$\d]/.test(prefix)) continue;
-        if (val >= 300 && val <= 850) {
-          candidates.push(val);
-        }
+        if (val >= 300 && val <= 850) return val;
       }
+      return null;
+    }
 
-      if (candidates.length > 0) {
-        ficoScore = candidates[0];
-        console.log('[Parser] Discover: FICO candidates found:', candidates, '→ using', ficoScore);
+    // Pass 1: look for the specific "fico score 8 based on" phrase (most reliable)
+    const specificIdx = lowerText.indexOf('fico score 8 based on');
+    if (specificIdx !== -1) {
+      const wStart = Math.max(0, specificIdx - 50);
+      const wEnd   = Math.min(text.length, specificIdx + 300);
+      const wText  = text.slice(wStart, wEnd);
+      console.log('[Parser] Discover: FICO specific window:', JSON.stringify(wText));
+      ficoScore = _findScoreInWindow(wText);
+      if (ficoScore) console.log('[Parser] Discover: FICO score found (specific):', ficoScore);
+    }
+
+    // Pass 2: search ALL "fico" occurrences if pass 1 failed
+    if (!ficoScore) {
+      let searchFrom = 0;
+      while (searchFrom < lowerText.length) {
+        const idx = lowerText.indexOf('fico', searchFrom);
+        if (idx === -1) break;
+        const wStart = Math.max(0, idx - 50);
+        const wEnd   = Math.min(text.length, idx + 300);
+        const wText  = text.slice(wStart, wEnd);
+        const candidate = _findScoreInWindow(wText);
+        if (candidate) {
+          ficoScore = candidate;
+          console.log('[Parser] Discover: FICO score found at idx', idx, ':', ficoScore);
+          break;
+        }
+        searchFrom = idx + 4; // advance past this "fico"
       }
     }
 

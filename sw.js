@@ -8,7 +8,7 @@
  *    These rarely change; serve fast from cache.
  */
 
-const CACHE_NAME = 'finance-app-v39';
+const CACHE_NAME = 'finance-app-v41';
 
 // Base path — empty string when served from root, '/repo-name' on GitHub Pages
 const BASE = '/finance-app';
