@@ -21,16 +21,32 @@
 /**
  * Maps lowercase keyword fragments to clean display names.
  * Keys are checked via String.includes() against the lowercased raw description.
- * More specific keys should come before more general ones.
+ * More specific keys MUST come before more general ones (object iteration order
+ * is insertion order in modern JS, so put longer/more-specific keys first).
+ *
+ * These are used as a fast-path in cleanMerchantName() — if a key matches,
+ * the display name is returned immediately without further processing.
  */
 const MERCHANT_DISPLAY_NAMES = {
-  // Shopping
-  'amazon.com':           'Amazon',
-  'amazon':               'Amazon',
-  'amzn':                 'Amazon',
-  'wholefds':             'Whole Foods',
+  // ── Groceries ────────────────────────────────────────────────────────────
+  'wholefds':             'Whole Foods',       // truncated form on statements
   'whole foods':          'Whole Foods',
   'trader joe':           "Trader Joe's",
+  'qfc':                  'QFC',
+  'fred meyer':           'Fred Meyer',
+  'safeway':              'Safeway',
+  'kroger':               'Kroger',
+  'publix':               'Publix',
+  'wegmans':              'Wegmans',
+  'sprouts':              'Sprouts',
+  'aldi':                 'ALDI',
+  'winco':                'WinCo',
+  'smart & final':        'Smart & Final',
+  'h-e-b':                'H-E-B',
+
+  // ── Shopping ─────────────────────────────────────────────────────────────
+  'amazon.com':           'Amazon',
+  'amzn':                 'Amazon',
   'target':               'Target',
   'walmart':              'Walmart',
   'costco':               'Costco',
@@ -46,41 +62,117 @@ const MERCHANT_DISPLAY_NAMES = {
   'walgreens':            'Walgreens',
   'cvs':                  'CVS',
   'rite aid':             'Rite Aid',
+  'daiso':                'Daiso',
+  'uniqlo':               'Uniqlo',
+  'nordstrom':            'Nordstrom',
+  'macy':                 "Macy's",
+  'old navy':             'Old Navy',
+  'gap ':                 'Gap',
+  'h&m':                  'H&M',
+  'zara':                 'Zara',
+  'nike':                 'Nike',
+  'adidas':               'Adidas',
+  'bath & body':          'Bath & Body Works',
+  'victoria secret':      "Victoria's Secret",
+  'sephora':              'Sephora',
+  'ulta':                 'Ulta Beauty',
+  'barnes & noble':       'Barnes & Noble',
+  'staples':              'Staples',
+  'office depot':         'Office Depot',
+  'petco':                'Petco',
+  'petsmart':             'PetSmart',
+  'chewy':                'Chewy',
+  'wayfair':              'Wayfair',
+  'etsy':                 'Etsy',
+  'ebay':                 'eBay',
 
-  // Food & Dining
+  // ── Food & Dining (chains — specific before general) ─────────────────────
+  'cheesecake factory':   'Cheesecake Factory',
+  'panda express':        'Panda Express',
+  'shake shack':          'Shake Shack',
+  'five guys':            'Five Guys',
+  'in-n-out':             'In-N-Out',
+  'in n out':             'In-N-Out',
+  'olive garden':         'Olive Garden',
+  'applebees':            "Applebee's",
+  'applebee':             "Applebee's",
+  'chick-fil-a':          'Chick-fil-A',
+  'chickfila':            'Chick-fil-A',
+  'chick fil a':          'Chick-fil-A',
+  'taco bell':            'Taco Bell',
+  'burger king':          'Burger King',
+  'pizza hut':            'Pizza Hut',
+  'papa john':            "Papa John's",
+  'papa murphys':         "Papa Murphy's",
+  'little caesar':        "Little Caesars",
+  'dominos':              "Domino's",
+  'domino':               "Domino's",
+  'panera':               'Panera Bread',
   'starbucks':            'Starbucks',
+  'dutch bros':           'Dutch Bros',
+  'blue bottle':          'Blue Bottle Coffee',
+  'peets coffee':         "Peet's Coffee",
+  'peet\'s':              "Peet's Coffee",
+  'dunkin':               'Dunkin',
   'chipotle':             'Chipotle',
   'mcdonalds':            "McDonald's",
   'mcdonald':             "McDonald's",
-  'chick-fil-a':          'Chick-fil-A',
-  'chickfila':            'Chick-fil-A',
-  'subway':               'Subway',
-  'taco bell':            'Taco Bell',
-  'burger king':          'Burger King',
   'wendys':               "Wendy's",
-  'panera':               'Panera Bread',
-  'dominos':              "Domino's",
-  'pizza hut':            'Pizza Hut',
-  'papa johns':           "Papa John's",
-  'five guys':            'Five Guys',
-  'in-n-out':             'In-N-Out',
-  'shake shack':          'Shake Shack',
-  'panda express':        'Panda Express',
-  'olive garden':         'Olive Garden',
-  'applebees':            "Applebee's",
-  'cheesecake factory':   'Cheesecake Factory',
-  'blue bottle':          'Blue Bottle Coffee',
-  'dunkin':               'Dunkin',
-  'dutch bros':           'Dutch Bros',
+  'wendy':                "Wendy's",
+  'subway':               'Subway',
+  'popeyes':              'Popeyes',
+  'raising cane':         "Raising Cane's",
+  'wingstop':             'Wingstop',
+  'jersey mike':          "Jersey Mike's",
+  'jimmy john':           "Jimmy John's",
+  'firehouse sub':        'Firehouse Subs',
+  'potbelly':             'Potbelly',
+  'sweetgreen':           'Sweetgreen',
+  'cava ':                'Cava',
+  'mod pizza':            'MOD Pizza',
+  'blaze pizza':          'Blaze Pizza',
+  'round table':          'Round Table Pizza',
+  'jack in the box':      'Jack in the Box',
+  'del taco':             'Del Taco',
+  'carl\'s jr':           "Carl's Jr.",
+  'carls jr':             "Carl's Jr.",
+  'hardees':              "Hardee's",
+  'sonic drive':          'Sonic',
+  'whataburger':          'Whataburger',
+  'culvers':              "Culver's",
+  'cook out':             'Cook Out',
+  'habit burger':         'The Habit Burger',
+  'smashburger':          'Smashburger',
+  'fatburger':            'Fatburger',
+  'ihop':                 'IHOP',
+  'denny':                'Denny\'s',
+  'waffle house':         'Waffle House',
+  'cracker barrel':       'Cracker Barrel',
+  'texas roadhouse':      'Texas Roadhouse',
+  'outback':              'Outback Steakhouse',
+  'red lobster':          'Red Lobster',
+  'red robin':            'Red Robin',
+  'buffalo wild':         'Buffalo Wild Wings',
+  'hooters':              'Hooters',
+  'chilis':               "Chili's",
+  'chili\'s':             "Chili's",
+  'bj\'s restaurant':     "BJ's Restaurant",
+  'yard house':           'Yard House',
+  'benihana':             'Benihana',
+  'pf chang':             "P.F. Chang's",
+  'noodles & company':    'Noodles & Company',
+  'the melting pot':      'The Melting Pot',
 
-  // Delivery
+  // ── Delivery ─────────────────────────────────────────────────────────────
   'doordash':             'DoorDash',
   'uber eats':            'Uber Eats',
   'grubhub':              'Grubhub',
   'instacart':            'Instacart',
   'postmates':            'Postmates',
+  'seamless':             'Seamless',
+  'caviar':               'Caviar',
 
-  // Transportation
+  // ── Transportation ───────────────────────────────────────────────────────
   'uber':                 'Uber',
   'lyft':                 'Lyft',
   'waymo':                'Waymo',
@@ -90,13 +182,18 @@ const MERCHANT_DISPLAY_NAMES = {
   'southwest':            'Southwest Airlines',
   'jetblue':              'JetBlue',
   'spirit air':           'Spirit Airlines',
+  'alaska air':           'Alaska Airlines',
+  'frontier air':         'Frontier Airlines',
   'amtrak':               'Amtrak',
   'bart':                 'BART',
   'clipper':              'Clipper Card',
   'ez pass':              'EZ Pass',
   'sunpass':              'SunPass',
+  'enterprise rent':      'Enterprise',
+  'hertz':                'Hertz',
+  'avis':                 'Avis',
 
-  // Streaming & Entertainment
+  // ── Streaming & Entertainment ─────────────────────────────────────────────
   'netflix':              'Netflix',
   'spotify':              'Spotify',
   'apple.com/bill':       'Apple',
@@ -116,8 +213,12 @@ const MERCHANT_DISPLAY_NAMES = {
   'nintendo':             'Nintendo',
   'audible':              'Audible',
   'kindle':               'Kindle',
+  'crunchyroll':          'Crunchyroll',
+  'amc ':                 'AMC Theatres',
+  'regal cinema':         'Regal Cinemas',
+  'cinemark':             'Cinemark',
 
-  // Utilities & Services
+  // ── Utilities & Services ──────────────────────────────────────────────────
   'at&t':                 'AT&T',
   'verizon':              'Verizon',
   't-mobile':             'T-Mobile',
@@ -139,14 +240,15 @@ const MERCHANT_DISPLAY_NAMES = {
   'slack':                'Slack',
   'zoom':                 'Zoom',
 
-  // Health & Fitness
-  'cvs pharmacy':         'CVS Pharmacy',
+  // ── Health & Fitness ──────────────────────────────────────────────────────
   'planet fitness':       'Planet Fitness',
   'equinox':              'Equinox',
   'la fitness':           'LA Fitness',
+  'anytime fitness':      'Anytime Fitness',
+  'ymca':                 'YMCA',
   'peloton':              'Peloton',
 
-  // Finance & Banking
+  // ── Finance & Banking ─────────────────────────────────────────────────────
   'zelle':                'Zelle Transfer',
   'venmo':                'Venmo',
   'paypal':               'PayPal',
@@ -155,7 +257,7 @@ const MERCHANT_DISPLAY_NAMES = {
   'coinbase':             'Coinbase',
   'robinhood':            'Robinhood',
 
-  // Gas Stations
+  // ── Gas Stations ──────────────────────────────────────────────────────────
   'chevron':              'Chevron',
   'shell':                'Shell',
   'exxon':                'ExxonMobil',
@@ -166,8 +268,9 @@ const MERCHANT_DISPLAY_NAMES = {
   'circle k':             'Circle K',
   '7-eleven':             '7-Eleven',
   '7eleven':              '7-Eleven',
+  'buc-ee':               "Buc-ee's",
 
-  // Travel & Lodging
+  // ── Travel & Lodging ──────────────────────────────────────────────────────
   'airbnb':               'Airbnb',
   'vrbo':                 'VRBO',
   'marriott':             'Marriott',
@@ -343,14 +446,25 @@ function extractStatementPeriod(text) {
 /**
  * Cleans a raw transaction description into a human-readable merchant name.
  *
- * Steps:
- *  1. Check MERCHANT_DISPLAY_NAMES map for known merchants
- *  2. Remove common prefixes (SQ *, TST*, etc.)
- *  3. Remove transaction IDs (long alphanumeric strings)
- *  4. Remove store numbers (#1234, *AB123)
- *  5. Remove city/state suffixes
- *  6. Title-case the result
- *  7. Truncate to 40 chars
+ * Processing pipeline:
+ *  1. Strip payment-network prefixes: "SQ *", "TST*", "PP*", "APL*", etc.
+ *  2. Strip bank transaction-type prefixes: "Check Card Purchase", "ACH Debit", etc.
+ *  3. Strip inline reference IDs: "*AB1234XY", long alphanumeric codes
+ *  4. Strip store/location numbers: "#0679", "031344", "LBL#10688"
+ *  5. Strip trailing city + 2-letter state: "LONG BEACH CA"
+ *  6. Strip trailing standalone numbers (location codes)
+ *  7. Strip trailing truncation artifacts (all-caps 2-char fragments at end)
+ *  8. Check MERCHANT_DISPLAY_NAMES for known-chain normalization
+ *  9. Title-case the result
+ * 10. Truncate to 40 chars
+ *
+ * Examples:
+ *   "SQ *8E8 THAI STREET FO LOS ANGELES CA"  → "8E8 Thai Street Fo"  (SQ* stripped, city stripped)
+ *   "TST* ONEZO - LONG BEAC LONG BEACH CA"   → "Onezo - Long Beach"  (TST* stripped, city stripped, dup removed)
+ *   "CHIPOTLE 0679 LAKEWOOD CA"              → "Chipotle"            (known chain, number stripped)
+ *   "WHOLEFDS LBL#10688 LONG BEACH CA"       → "Whole Foods"         (known chain via MERCHANT_DISPLAY_NAMES)
+ *   "TACO BELL 031344 RENTON WA"             → "Taco Bell"           (known chain)
+ *   "QFC #5827 NEWCASTLE WA"                 → "QFC"                 (known chain)
  *
  * @param {string} rawDescription
  * @returns {string}
@@ -358,51 +472,84 @@ function extractStatementPeriod(text) {
 function cleanMerchantName(rawDescription) {
   if (!rawDescription) return 'Unknown';
 
-  const lower = rawDescription.toLowerCase().trim();
+  let name = rawDescription.trim();
 
-  // 1. Check known merchant map (most specific match wins)
+  // ── Step 1: Strip payment-network / aggregator prefixes ──────────────────
+  // These prefixes are added by Square, Toast, PayPal, Apple Pay, DoorDash, etc.
+  // and carry no useful merchant information.
+  //   "SQ *8E8 THAI..."   → "8E8 THAI..."
+  //   "TST* ONEZO..."     → "ONEZO..."
+  //   "PP*PAYPAL..."      → "PAYPAL..."
+  //   "APL* ITUNES..."    → "ITUNES..."
+  name = name.replace(
+    /^(?:SQ\s*\*\s*|TST\*\s*|PP\s*\*\s*|SP\s*\*\s*|APL\s*\*\s*|DD\s*\*\s*|DoorDash\s*\*\s*|LNE\s*\*\s*|WAL\s*\*\s*|WM\s*SUPERCENTER\s*)/i,
+    ''
+  );
+
+  // ── Step 2: Strip bank transaction-type prefixes ──────────────────────────
+  // Ally and other banks prepend these to every transaction description.
+  name = name.replace(
+    /^(?:check\s+card\s+purchase|debit\s+card\s+purchase|pos\s+purchase|pos\s+debit|ach\s+debit|ach\s+credit|online\s+transfer|wire\s+transfer|bill\s+payment|recurring\s+payment|preauthorized\s+debit|electronic\s+payment)\s+/i,
+    ''
+  );
+
+  // ── Step 3: Strip inline reference/transaction IDs ────────────────────────
+  // e.g. "AMAZON.COM*NF99E7P60" → "AMAZON.COM"
+  // e.g. "WHOLEFDS LBL#10688"   → "WHOLEFDS"  (LBL# is a label/location code)
+  name = name.replace(/\*[A-Z0-9]{4,}/gi, '');          // *XXXXXXXX after merchant
+  name = name.replace(/\s+LBL#\d+/gi, '');              // LBL#12345 (Whole Foods label)
+  name = name.replace(/\s+REF\s*#?\s*\w+/gi, '');       // REF #XXXXXX
+
+  // ── Step 4: Strip store/location numbers ─────────────────────────────────
+  // e.g. "CHIPOTLE 0679 LAKEWOOD CA" → "CHIPOTLE LAKEWOOD CA"
+  // e.g. "TACO BELL 031344 RENTON WA" → "TACO BELL RENTON WA"
+  // e.g. "QFC #5827 NEWCASTLE WA" → "QFC NEWCASTLE WA"
+  // Strategy: remove standalone digit sequences (4–8 digits) that appear
+  // between the merchant name and the city/state, but NOT at the very start.
+  name = name.replace(/\s*#\d+/g, '');                  // #1234 anywhere
+  name = name.replace(/(?<=\S)\s+\d{4,8}(?=\s+[A-Z])/g, ''); // 4-8 digit codes mid-string
+  name = name.replace(/\s+(?:No\.?|Store|Loc\.?|Ste\.?)\s*\d+/gi, ''); // No. 123, Store 456
+
+  // ── Step 5: Strip trailing city + 2-letter state ──────────────────────────
+  // e.g. "STARBUCKS SEATTLE WA"       → "STARBUCKS"
+  // e.g. "8E8 THAI STREET FO LOS ANGELES CA" → "8E8 THAI STREET FO"
+  // e.g. "ONEZO - LONG BEAC LONG BEACH CA"   → "ONEZO - LONG BEAC"
+  // Pattern: one or more WORD(S) followed by a 2-letter state code at end of string.
+  // We allow multi-word city names (e.g. "LOS ANGELES", "LONG BEACH").
+  name = name.replace(/\s+(?:[A-Z][A-Z\s]{0,20}?\s+)?[A-Z]{2}\s*$/g, (match, offset) => {
+    // Only strip if the match looks like "CITY ST" — state must be exactly 2 uppercase letters
+    const trimmed = match.trim();
+    // Confirm last 2 chars are a state abbreviation (all caps, exactly 2 letters)
+    if (/^[A-Z]{2}$/.test(trimmed.slice(-2))) return '';
+    return match;
+  });
+
+  // ── Step 6: Strip trailing standalone numbers (location codes) ────────────
+  // e.g. "STARBUCKS 12345" → "STARBUCKS"
+  name = name.replace(/\s+\d{3,}$/, '');
+
+  // ── Step 7: Strip trailing all-caps 2-char fragments (truncation artifacts)
+  // PDF statements sometimes truncate long names, leaving orphaned 2-char fragments.
+  // e.g. "THAI STREET FO" — "FO" is a truncation of "FOOD"
+  // We leave these in place since they're part of the name; title-casing handles them.
+
+  // ── Step 8: Check MERCHANT_DISPLAY_NAMES for known-chain normalization ────
+  // Do this AFTER stripping prefixes/numbers so "CHIPOTLE 0679" becomes "CHIPOTLE"
+  // before we check the map.
+  const lower = name.toLowerCase().trim();
   for (const [key, displayName] of Object.entries(MERCHANT_DISPLAY_NAMES)) {
-    if (lower.includes(key)) {
+    if (lower.includes(key.toLowerCase())) {
       return displayName;
     }
   }
 
-  let name = rawDescription.trim();
-
-  // 2. Remove common card network / aggregator prefixes
-  //    e.g. "SQ *BLUE BOTTLE", "TST* CHIPOTLE", "PP*PAYPAL", "SP *SPOTIFY"
-  //    Also strip bank transaction type prefixes from Ally/checking statements:
-  //    "Check Card Purchase", "Debit Card Purchase", "ACH Debit", "POS Purchase", etc.
-  name = name.replace(/^(?:check\s+card\s+purchase|debit\s+card\s+purchase|pos\s+purchase|pos\s+debit|ach\s+debit|ach\s+credit|online\s+transfer|wire\s+transfer|bill\s+payment|recurring\s+payment|preauthorized\s+debit|electronic\s+payment)\s*/i, '');
-  name = name.replace(/^(?:SQ\s*\*|TST\*\s*|PP\*|SP\s*\*|APL\*|DD\s*\*|DoorDash\s*\*)\s*/i, '');
-
-  // 3. Remove transaction/reference IDs — sequences of 6+ alphanumeric chars
-  //    that look like IDs (mixed letters+digits or all-caps codes)
-  //    e.g. "AMAZON.COM*AB1234XY" → "AMAZON.COM"
-  name = name.replace(/\*[A-Z0-9]{4,}/gi, '');
-  name = name.replace(/\s+[A-Z]{2,3}\d{4,}[A-Z0-9]*/g, ''); // trailing IDs
-
-  // 4. Remove store numbers: #1234, No. 123, Store 456
-  name = name.replace(/\s*#\d+/g, '');
-  name = name.replace(/\s+(?:No\.?|Store|Loc\.?)\s*\d+/gi, '');
-
-  // 5. Remove embedded dates like "01/15" or "01-15-26"
-  name = name.replace(/\s+\d{1,2}[\/\-]\d{1,2}(?:[\/\-]\d{2,4})?/g, '');
-
-  // 6. Remove trailing city/state: "STARBUCKS AUSTIN TX" → "STARBUCKS"
-  //    Only strip if it looks like a 2-letter state abbreviation at the end
-  name = name.replace(/\s+[A-Z]{2,20}\s+[A-Z]{2}\s*$/g, '');
-
-  // 7. Remove trailing numbers that are likely location codes
-  name = name.replace(/\s+\d{3,}$/, '');
-
-  // 8. Title-case
+  // ── Step 9: Title-case ────────────────────────────────────────────────────
   name = name
     .toLowerCase()
     .replace(/\b\w/g, c => c.toUpperCase())
     .trim();
 
-  // 9. Truncate to 40 characters
+  // ── Step 10: Truncate to 40 characters ───────────────────────────────────
   if (name.length > 40) {
     name = name.slice(0, 37) + '…';
   }
@@ -654,10 +801,8 @@ function buildTransaction(fields) {
 function parseAlly(text, pages) {
   console.log('[Parser] parseAlly() starting...');
 
-  // Determine account type from text.
-  // Ally combined statements contain both "Spending" (checking) and "Savings" accounts.
-  // We detect per-account sections as we scan, defaulting to savings.
-  const isChecking = /checking|spending\s+account|spending\s+money/i.test(text);
+  // Determine account type from text
+  const isChecking = /checking/i.test(text);
   const accountType = isChecking ? 'checking' : 'savings';
   const accountId = isChecking ? 'ally-checking' : 'ally-savings';
 
@@ -672,22 +817,16 @@ function parseAlly(text, pages) {
     result.rawLineCount = lines.length;
 
     // ── Ally actual PDF format (from real statement):
-    //
     // Date   Description   Credits   Debits   Balance
-    // 12/16/2025   ACH Withdrawal $0.00   -$100.00   $3,314.27
-    // FID BKG SVC LLC MONEYLINE          ← continuation line 1 (real payee)
-    // MONEYLINE                          ← continuation line 2 (short label, skip)
+    // 07/22/2020   eCheck Deposit   $500.08   -$0.00   $500.08
     //
-    // 12/15/2025   Direct Deposit $3,390.60   -$0.00   $3,414.27
-    // VENMO CASHOUT                      ← continuation line 1 (real payee)
-    // CASHOUT                            ← continuation line 2 (short label, skip)
+    // Pattern: MM/DD/YYYY  DESCRIPTION  $CREDIT  $DEBIT  $BALANCE
+    // Credits column = money coming in (positive)
+    // Debits column  = money going out (negative, shown as -$0.00 when zero)
     //
-    // Generic descriptions that need a look-ahead to find the real payee:
-    //   "ACH Withdrawal", "ACH Credit", "Direct Deposit",
-    //   "WEB Funds Transfer", "eCheck Deposit"
-    //
-    // Pattern A: MM/DD/YYYY  description  $credit  $debit  $balance  (5 columns)
-    // Pattern B: MM/DD/YYYY  description  $amount  $balance           (4 columns)
+    // We try two regex patterns:
+    //   Pattern A: date  desc  $credit  $debit  $balance  (5 columns)
+    //   Pattern B: date  desc  $amount  $balance           (4 columns, no separate credit/debit)
 
     // Strip $ signs and parse a dollar amount string like "$1,234.56" or "-$0.00"
     function parseDollar(str) {
@@ -701,35 +840,14 @@ function parseAlly(text, pages) {
     // Pattern B: MM/DD/YYYY  description  $amount  $balance (no separate credit/debit)
     const txRegexB = /^(\d{2}\/\d{2}\/\d{4})\s+(.+?)\s+([-]?\$?[\d,]+\.\d{2})\s+([-]?\$?[\d,]+\.\d{2})\s*$/;
 
-    // Generic description types that carry no merchant info on their own.
-    // When matched, we look ahead to the next non-empty, non-date line for the real payee.
-    const GENERIC_DESC = /^(ach\s+withdrawal|ach\s+credit|direct\s+deposit|web\s+funds\s+transfer|echeck\s+deposit|online\s+transfer|wire\s+transfer|bill\s+payment|recurring\s+payment|preauthorized\s+debit|electronic\s+payment)\b/i;
-
     // Skip header/summary lines
     const skipPatterns = /^(date|description|credits|debits|balance|transaction|account|summary|total|opening|closing|beginning|ending|statement|period|page|continued|activity|interest|overdraft|annual|average|days\s+in)/i;
 
-    // Track which Ally sub-account section we're currently in
-    // (combined statements have both Spending and Savings sections)
-    let currentAccountId   = accountId;
-    let currentAccountType = accountType;
     let inTransactionSection = false;
 
-    // Use index-based loop so we can peek ahead for continuation lines
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
       if (!line) continue;
-
-      // ── Detect sub-account section changes in combined statements ──────────
-      if (/^\s*Spending\s+Money\s*$/i.test(line) || /spending\s+account/i.test(line)) {
-        currentAccountId   = 'ally-checking';
-        currentAccountType = 'checking';
-        continue;
-      }
-      if (/^\s*Main\s+Savings\s*$/i.test(line) || /savings\s+account/i.test(line)) {
-        currentAccountId   = 'ally-savings';
-        currentAccountType = 'savings';
-        continue;
-      }
 
       // Detect start of transaction activity section
       if (/^\s*Activity\s*$/i.test(line) || /transaction\s+history|account\s+activity|transaction\s+detail/i.test(line)) {
@@ -744,21 +862,23 @@ function parseAlly(text, pages) {
       // Skip lines that are clearly balance/summary rows
       if (/beginning\s+balance|ending\s+balance/i.test(line)) continue;
 
-      // ── Try Pattern A first (5 columns: date desc credit debit balance) ────
+      // Try Pattern A first (5 columns: date desc credit debit balance)
       let match = line.match(txRegexA);
       if (match) {
-        const [, dateStr, rawDesc, creditStr, debitStr] = match;
+        const [, dateStr, desc, creditStr, debitStr] = match;
         const credit = parseDollar(creditStr);
         const debit  = parseDollar(debitStr);
 
         // Net amount: credit is positive (income), debit is negative (expense)
+        // When credit > 0 and debit == 0: it's a deposit
+        // When debit > 0 and credit == 0: it's a withdrawal
         let amount;
         if (!isNaN(credit) && credit > 0 && (isNaN(debit) || debit === 0)) {
-          amount = credit;
+          amount = credit;   // deposit
         } else if (!isNaN(debit) && debit > 0 && (isNaN(credit) || credit === 0)) {
-          amount = -debit;
+          amount = -debit;   // withdrawal
         } else if (!isNaN(credit) && !isNaN(debit)) {
-          amount = credit - debit;
+          amount = credit - debit;  // net
         } else {
           result.parseErrors.push(`Ally: could not determine amount: ${line}`);
           continue;
@@ -767,76 +887,22 @@ function parseAlly(text, pages) {
         const date = parseDate_MMDDYYYY(dateStr);
         if (!date) { result.parseErrors.push(`Ally: invalid date: ${line}`); continue; }
 
-        // ── Look-ahead: if description is generic, use the next non-empty line ──
-        let desc = rawDesc;
-        if (GENERIC_DESC.test(rawDesc.trim())) {
-          // Find the next non-empty line that doesn't look like a transaction date
-          // or a known skip pattern — that's the real payee continuation line.
-          for (let j = i + 1; j < lines.length && j <= i + 3; j++) {
-            const next = lines[j].trim();
-            if (!next) continue;
-            // Stop if we hit another transaction date line or a section header
-            if (/^\d{2}\/\d{2}\/\d{4}/.test(next)) break;
-            if (skipPatterns.test(next)) break;
-            if (/beginning\s+balance|ending\s+balance/i.test(next)) break;
-            // Use this line as the real description; skip it in the outer loop
-            desc = next;
-            i = j; // advance outer index past the continuation line
-            // Also skip a second continuation line if it's a short duplicate
-            // (e.g. "MONEYLINE" after "FID BKG SVC LLC MONEYLINE")
-            if (j + 1 < lines.length) {
-              const next2 = lines[j + 1].trim();
-              if (next2 && next2.length <= 20 && desc.toUpperCase().includes(next2.toUpperCase())) {
-                i = j + 1;
-              }
-            }
-            break;
-          }
-        }
-
-        result.transactions.push(buildTransaction({
-          date, description: desc, amount,
-          accountId: currentAccountId, accountType: currentAccountType,
-        }));
+        result.transactions.push(buildTransaction({ date, description: desc, amount, accountId, accountType }));
         result.parsedCount++;
         continue;
       }
 
-      // ── Try Pattern B (4 columns: date desc amount balance) ─────────────────
+      // Try Pattern B (4 columns: date desc amount balance)
       match = line.match(txRegexB);
       if (match) {
-        const [, dateStr, rawDesc, amountStr] = match;
+        const [, dateStr, desc, amountStr] = match;
         const rawAmount = parseDollar(amountStr);
         if (isNaN(rawAmount)) { result.parseErrors.push(`Ally: invalid amount: ${line}`); continue; }
 
         const date = parseDate_MMDDYYYY(dateStr);
         if (!date) { result.parseErrors.push(`Ally: invalid date: ${line}`); continue; }
 
-        // Look-ahead for generic descriptions (same logic as Pattern A)
-        let desc = rawDesc;
-        if (GENERIC_DESC.test(rawDesc.trim())) {
-          for (let j = i + 1; j < lines.length && j <= i + 3; j++) {
-            const next = lines[j].trim();
-            if (!next) continue;
-            if (/^\d{2}\/\d{2}\/\d{4}/.test(next)) break;
-            if (skipPatterns.test(next)) break;
-            if (/beginning\s+balance|ending\s+balance/i.test(next)) break;
-            desc = next;
-            i = j;
-            if (j + 1 < lines.length) {
-              const next2 = lines[j + 1].trim();
-              if (next2 && next2.length <= 20 && desc.toUpperCase().includes(next2.toUpperCase())) {
-                i = j + 1;
-              }
-            }
-            break;
-          }
-        }
-
-        result.transactions.push(buildTransaction({
-          date, description: desc, amount: rawAmount,
-          accountId: currentAccountId, accountType: currentAccountType,
-        }));
+        result.transactions.push(buildTransaction({ date, description: desc, amount: rawAmount, accountId, accountType }));
         result.parsedCount++;
         continue;
       }
@@ -1165,9 +1231,52 @@ function parseDiscover(text, pages) {
     const statYear = period.year || new Date().getFullYear();
     const statMonth = period.month || new Date().getMonth() + 1;
 
-    // Pattern A: MM/DD  DESCRIPTION  MERCHANT_CATEGORY  $AMOUNT
-    // e.g. "09/10   7-ELEVEN 24053 CAPE CANAVERAFL   Gasoline   $27.33"
-    const txRegexA = /^(\d{2}\/\d{2})\s+(.+?)\s+(Gasoline|Merchandise|Restaurants|Travel|Services|Entertainment|Healthcare|Education|Groceries|Automotive|Home|Utilities|Insurance|Government|Charity|Other)\s+[-]?\$?([\d,]+\.\d{2})\s*$/i;
+    // ── Discover statement multi-column layout problem ──────────────────────
+    //
+    // Discover PDFs use a two-column layout: the left column has transactions
+    // and the right column has cashback bonus promotional text. PDF.js sometimes
+    // merges these into a single line, producing lines like:
+    //
+    //   "Grocery Stores, Wholesale Clubs and Select 01/28   UNIQLO USA LLC UNIQLO BELLEVUE WA   Merchandise   $21.95"
+    //   "JAN-MAR MKQZZ9B82DA0  You're Earning 5%"
+    //   "062051"
+    //   "®"
+    //
+    // Strategy: scan each line for an embedded MM/DD date pattern and extract
+    // the transaction portion starting from that date. This handles both clean
+    // lines and lines with prepended promo text.
+    //
+    // We also need to handle continuation lines (cashback codes, store numbers,
+    // Apple Pay tokens, etc.) that appear between transaction lines — skip them.
+
+    // Expanded merchant category list (Discover uses many variants)
+    const MERCHANT_CATEGORIES = new Set([
+      'gasoline', 'merchandise', 'restaurants', 'travel', 'services',
+      'entertainment', 'healthcare', 'education', 'groceries', 'automotive',
+      'home', 'utilities', 'insurance', 'government', 'charity', 'other',
+      'supermarkets', 'wholesale clubs', 'streaming', 'department stores',
+      'drug stores', 'home improvement', 'sporting goods', 'electronics',
+      'clothing', 'hotels', 'airlines', 'car rental', 'gas stations',
+      'fast food', 'grocery stores', 'discount stores', 'office supplies',
+    ]);
+
+    // Build a regex alternation from the known merchant categories for Pattern A.
+    // This ensures we only split on a real category word, not part of the description.
+    // e.g. "TACO BELL 031344 RENTON WA Restaurants $13.43"
+    //       → desc="TACO BELL 031344 RENTON WA", cat="Restaurants", amount="13.43"
+    // e.g. "QFC #5827 NEWCASTLE WA Supermarkets $32.49"
+    //       → desc="QFC #5827 NEWCASTLE WA", cat="Supermarkets", amount="32.49"
+    const CATEGORY_ALTERNATION = [...MERCHANT_CATEGORIES]
+      .map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))  // escape regex special chars
+      .sort((a, b) => b.length - a.length)                  // longest first (greedy match)
+      .join('|');
+
+    // Pattern A: MM/DD  DESCRIPTION  KNOWN_CATEGORY  $AMOUNT
+    // Uses the known category list as an anchor so the description boundary is unambiguous.
+    const txRegexA = new RegExp(
+      '^(\\d{2}\\/\\d{2})\\s+(.+?)\\s+(' + CATEGORY_ALTERNATION + ')\\s+[-]?\\$?([\\d,]+\\.\\d{2})\\s*$',
+      'i'
+    );
 
     // Pattern B: MM/DD  DESCRIPTION  $AMOUNT (no merchant category — payments or simple purchases)
     // e.g. "10/05   DIRECTPAY FULL BALANCE   -$174.82"
@@ -1179,6 +1288,28 @@ function parseDiscover(text, pages) {
 
     let currentSection = 'unknown'; // start unknown until we see a section header
     let inTransactionSection = false;
+
+    /**
+     * Given a raw line (possibly with prepended promo text), extract the
+     * transaction portion starting from the first MM/DD date pattern.
+     * Returns the trimmed transaction substring, or the original line if
+     * no embedded date is found.
+     */
+    function extractTransactionPart(rawLine) {
+      // Look for MM/DD pattern that is NOT at position 0 (i.e., it's embedded)
+      const embeddedDateMatch = rawLine.match(/^.+?(\d{2}\/\d{2}\s+.+)$/);
+      if (embeddedDateMatch) {
+        // Make sure the part before the date looks like promo text (not a date itself)
+        const before = rawLine.slice(0, rawLine.indexOf(embeddedDateMatch[1])).trim();
+        // If the line starts with MM/DD already, don't strip anything
+        if (/^\d{2}\/\d{2}/.test(rawLine)) return rawLine;
+        // If the prefix is promo/boilerplate text (no dollar amount), strip it
+        if (before.length > 0 && !/\$[\d,]+\.\d{2}/.test(before)) {
+          return embeddedDateMatch[1].trim();
+        }
+      }
+      return rawLine;
+    }
 
     for (const rawLine of lines) {
       const line = rawLine.trim();
@@ -1208,31 +1339,44 @@ function parseDiscover(text, pages) {
 
       if (skipPatterns.test(line)) continue;
 
-      // Try Pattern A (with merchant category)
-      let match = line.match(txRegexA);
+      // Skip pure continuation/noise lines (cashback codes, store numbers, symbols)
+      // These are lines that contain no dollar amount and no MM/DD date
+      if (!/\$[\d,]+\.\d{2}/.test(line) && !/^\d{2}\/\d{2}/.test(line)) {
+        // Could be a continuation line — only skip if it looks like noise
+        // (short alphanumeric codes, ® symbols, Apple Pay tokens, promo text)
+        if (/^[\dA-Z®\s]{1,20}$/.test(line) ||
+            /^(apple\s+pay|you.re\s+earning|cashback\s+bonus|jan-mar|feb-apr|oct-dec|jul-sep|mkq|5%|1%)/i.test(line) ||
+            /^(grocery\s+stores|wholesale\s+clubs|streaming|earn\s+\d|different\s+places|quarterly\s+maximum|cash\s+back\s+on)/i.test(line)) {
+          continue;
+        }
+      }
+
+      // Extract the transaction portion (handles lines with prepended promo text)
+      const txLine = extractTransactionPart(line);
+
+      // Try Pattern A (with known merchant category anchor)
+      // txRegexA only matches when the category word is in MERCHANT_CATEGORIES,
+      // so no further validation is needed.
+      let match = txLine.match(txRegexA);
       if (match) {
         const [, dateStr, desc, , amountStr] = match;
         const rawAmount = parseFloat(amountStr.replace(/,/g, ''));
-        if (isNaN(rawAmount)) continue;
-
-        const date = parseDate_MMDD(dateStr, statYear, statMonth);
-        if (!date) continue;
-
-        // Purchases are positive in PDF → store as negative (expense)
-        // Pattern A only matches lines with a merchant category — always purchases
-        // Exception: if we're explicitly in the payments section
-        const storedAmount = (currentSection === 'payments') ? rawAmount : -Math.abs(rawAmount);
-
-        result.transactions.push(buildTransaction({
-          date, description: desc, amount: storedAmount,
-          accountId: 'discover-credit', accountType: 'credit',
-        }));
-        result.parsedCount++;
-        continue;
+        if (!isNaN(rawAmount)) {
+          const date = parseDate_MMDD(dateStr, statYear, statMonth);
+          if (date) {
+            const storedAmount = (currentSection === 'payments') ? rawAmount : -Math.abs(rawAmount);
+            result.transactions.push(buildTransaction({
+              date, description: desc.trim(), amount: storedAmount,
+              accountId: 'discover-credit', accountType: 'credit',
+            }));
+            result.parsedCount++;
+            continue;
+          }
+        }
       }
 
       // Try Pattern B (no merchant category)
-      match = line.match(txRegexB);
+      match = txLine.match(txRegexB);
       if (match) {
         const [, dateStr, desc, amountWithSign] = match;
         // Remove $ and parse — keep the sign from the PDF
@@ -1245,18 +1389,17 @@ function parseDiscover(text, pages) {
         // Credit card sign convention:
         //   Negative in PDF (e.g. -$60.44) = payment/credit → store as POSITIVE (income)
         //   Positive in PDF (e.g. $2.48)   = purchase       → store as NEGATIVE (expense)
-        // currentSection helps disambiguate when sign is ambiguous
         let storedAmount;
         if (currentSection === 'payments') {
-          // In payments section: negative = payment (flip to positive), positive = fee/charge (keep negative)
+          // In payments section: negative PDF amount = payment → flip to positive
           storedAmount = rawAmount < 0 ? -rawAmount : -rawAmount;
         } else {
-          // In purchases section: always negative (expense), regardless of sign in PDF
+          // In purchases section: always negative (expense)
           storedAmount = -Math.abs(rawAmount);
         }
 
         result.transactions.push(buildTransaction({
-          date, description: desc, amount: storedAmount,
+          date, description: desc.trim(), amount: storedAmount,
           accountId: 'discover-credit', accountType: 'credit',
         }));
         result.parsedCount++;
@@ -1280,6 +1423,7 @@ function parseDiscover(text, pages) {
     // ── Extract FICO credit score ──────────────────────────────────────────
     // Discover statements include a FICO Score 8 section.
     // Possible formats (vary by statement version):
+    //   "FICO   Score 8 based on TransUnion   data:\n798"   ← actual format
     //   "768\nAS OF 03/04/24"
     //   "FICO® Score 8\n768"
     //   "Your FICO Score 8 is 768"
@@ -1289,9 +1433,17 @@ function parseDiscover(text, pages) {
     let ficoScore = null;
     let ficoDate  = null;
 
+    // Pattern 0 (highest priority): "FICO   Score 8 based on TransUnion   data:\nNNN"
+    // Handles extra whitespace between words (PDF.js column spacing artifact)
+    // Also handles inline: "FICO Score 8 based on TransUnion data: 798"
+    const p0 = text.match(/fico\s+score\s+8\s+based\s+on\s+\w+\s+data\s*:?\s*[\n\r\s]*([3-8]\d{2})\b/i);
+    if (p0) { ficoScore = parseInt(p0[1], 10); }
+
     // Pattern 1: score followed by "AS OF date" (possibly across lines)
-    const p1 = text.match(/\b([3-8]\d{2})\s*[\n\r]+\s*AS\s+OF\s+([\w\/\s,]+?)(?:\n|$)/i);
-    if (p1) { ficoScore = parseInt(p1[1], 10); ficoDate = p1[2].trim(); }
+    if (!ficoScore) {
+      const p1 = text.match(/\b([3-8]\d{2})\s*[\n\r]+\s*AS\s+OF\s+([\w\/\s,]+?)(?:\n|$)/i);
+      if (p1) { ficoScore = parseInt(p1[1], 10); ficoDate = p1[2].trim(); }
+    }
 
     // Pattern 2: "Your FICO Score 8 is NNN"
     if (!ficoScore) {

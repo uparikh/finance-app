@@ -488,14 +488,58 @@
       }
     }
 
+    // Scroll-driven y-axis state — shared across buildChart calls
+    var _scrollDatasets  = [];
+    var _scrollPointWidth = POINT_WIDTH;
+    var _yAxisRafId = null;
+
+    /**
+     * Redraws the sticky y-axis based on which data points are currently
+     * visible in the scroll viewport. Called on every scroll event (rAF-throttled).
+     */
+    function _redrawYAxisForScroll() {
+      if (!_drillChart || !_scrollDatasets.length) return;
+
+      var scrollLeft   = scrollWrapper.scrollLeft;
+      var visibleWidth = scrollWrapper.clientWidth;
+      var totalPoints  = _scrollDatasets[0].data.length;
+      var pw           = _scrollPointWidth;
+
+      // Determine which point indices are currently visible
+      // Each point occupies pw pixels; point i is centered at (i + 0.5) * pw
+      var firstVisible = Math.max(0,             Math.floor(scrollLeft / pw));
+      var lastVisible  = Math.min(totalPoints - 1, Math.ceil((scrollLeft + visibleWidth) / pw));
+
+      // Collect values for visible points across all datasets
+      var visibleVals = [];
+      _scrollDatasets.forEach(function (ds) {
+        for (var i = firstVisible; i <= lastVisible; i++) {
+          if (ds.data[i] !== undefined) visibleVals.push(ds.data[i]);
+        }
+      });
+
+      if (visibleVals.length === 0) return;
+
+      var vMin = Math.min.apply(null, visibleVals);
+      var vMax = Math.max.apply(null, visibleVals);
+      var vPad = Math.max(Math.abs(vMax - vMin) * 0.12, 1);
+      drawYAxis(vMin - vPad, vMax + vPad);
+    }
+
     function buildChart(range) {
       _drillChart = destroyChart(_drillChart);
+
+      // Remove previous scroll listener before rebuilding
+      if (scrollWrapper._yAxisScrollHandler) {
+        scrollWrapper.removeEventListener('scroll', scrollWrapper._yAxisScrollHandler);
+        scrollWrapper._yAxisScrollHandler = null;
+      }
 
       const filtered = filterSummaries(_allSummaries, range);
       const labels   = filtered.map(function (s) { return monthKeyToShort(s.monthKey); });
       const datasets = opts.datasets(filtered);
 
-      // Compute all values for y-axis range
+      // Compute all values for global y-axis range (used for Chart.js scale)
       var allVals = [];
       datasets.forEach(function (ds) { allVals = allVals.concat(ds.data || []); });
       var _rawMin = Math.min.apply(null, allVals);
@@ -511,6 +555,10 @@
       canvas.width  = chartWidth;
       canvas.height = 260;
       innerWrapper.style.width = chartWidth + 'px';
+
+      // Store for scroll-driven y-axis redraws
+      _scrollDatasets   = datasets;
+      _scrollPointWidth = pointWidth;
 
       // Scroll to show the most recent 6 months (rightmost)
       requestAnimationFrame(function () {
@@ -569,10 +617,24 @@
             }
           },
           animation: {
-            onComplete: function () { drawYAxis(minVal, maxVal); },
+            onComplete: function () {
+              // Initial y-axis draw after animation — use visible range
+              _redrawYAxisForScroll();
+            },
           },
         },
       });
+
+      // ── Scroll-driven y-axis: redraw on every scroll (rAF-throttled) ──────
+      function _onScroll() {
+        if (_yAxisRafId) return; // already scheduled
+        _yAxisRafId = requestAnimationFrame(function () {
+          _yAxisRafId = null;
+          _redrawYAxisForScroll();
+        });
+      }
+      scrollWrapper._yAxisScrollHandler = _onScroll;
+      scrollWrapper.addEventListener('scroll', _onScroll, { passive: true });
     }
 
     // Wire range buttons
@@ -883,6 +945,7 @@
       const catMap               = buildCategoryMap(_allCategories);
 
       AnalyticsScreen.renderCumulativeSavingsChart(_allSummaries); // always uses ALL summaries for running total
+      AnalyticsScreen._wireCumulativeCard();
       AnalyticsScreen.renderOverviewCard(filteredSummaries);
       AnalyticsScreen.renderCategoryChart(filteredTransactions, _allCategories, catMap);
       AnalyticsScreen.renderSavingsRateChart(filteredSummaries);
@@ -987,6 +1050,32 @@
         row.addEventListener('keydown', function (e) {
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTap(); }
         });
+      });
+    },
+
+    // ── _wireCumulativeCard ───────────────────────────────────────────────────
+
+    /**
+     * Wires the tap/click/keyboard handler on the cumulative chart card so it
+     * opens the drill-down overlay. Called after each render to ensure the
+     * handler is always attached (card innerHTML is not replaced, so one-time
+     * addEventListener is sufficient — we guard against double-binding with a flag).
+     */
+    _wireCumulativeCard: function () {
+      const card = el('cumulative-chart-card');
+      if (!card || card._drillWired) return;
+      card._drillWired = true;
+
+      function handleTap(e) {
+        // Don't open drill-down if the tap was on the chart canvas itself
+        // (allow normal chart tooltip interaction on the preview chart)
+        if (e.target && e.target.tagName === 'CANVAS') return;
+        AnalyticsScreen._openDrilldown('cumulative');
+      }
+
+      card.addEventListener('click', handleTap);
+      card.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); AnalyticsScreen._openDrilldown('cumulative'); }
       });
     },
 
@@ -1158,6 +1247,46 @@
                 var isOOS = Math.abs(real) > CAP;
                 return '<strong>' + label + ':</strong> ' + real + '%' +
                   (isOOS ? '<br><span style="font-size:11px;color:var(--warning);">⚠️ Not shown to scale (capped at ' + CAP + '%)</span>' : '');
+              },
+            });
+          });
+          break;
+
+        case 'cumulative':
+          openDrilldown('Cumulative Net Saved', function (container) {
+            // Subtitle
+            const subtitle = document.createElement('p');
+            subtitle.style.cssText = 'font-size:13px;color:var(--text-secondary);margin-bottom:16px;';
+            subtitle.textContent = 'Running total of net savings (income − expenses) across all months.';
+            container.appendChild(subtitle);
+
+            renderDrillLineChart(container, {
+              datasets: function (filtered) {
+                // Build cumulative running total from the filtered summaries
+                let running = 0;
+                const cumulativeData = filtered.map(function (s) {
+                  running += (s.netSavings || 0);
+                  return Math.round(running * 100) / 100;
+                });
+
+                const lastVal   = cumulativeData[cumulativeData.length - 1] || 0;
+                const lineColor = lastVal >= 0 ? '#10B981' : '#EF4444';
+                const fillColor = lastVal >= 0 ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.08)';
+
+                return [{
+                  label: 'Cumulative Saved',
+                  data: cumulativeData,
+                  borderColor: lineColor,
+                  backgroundColor: fillColor,
+                  fill: true,
+                  tension: 0.4,
+                  pointRadius: 5,
+                  pointHoverRadius: 8,
+                  pointBackgroundColor: lineColor,
+                }];
+              },
+              yFormat: function (v) {
+                return (v < 0 ? '−' : '') + '$' + (Math.abs(v) >= 1000 ? (Math.abs(v) / 1000).toFixed(1) + 'k' : Math.abs(v));
               },
             });
           });

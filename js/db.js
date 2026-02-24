@@ -66,9 +66,8 @@
    * pattern is a lowercase substring to match against the transaction description.
    */
   const DEFAULT_MERCHANT_RULES = [
-    // ── Food & Dining ──────────────────────────────────────────────────────
+    // ── Food & Dining — Named Chains ───────────────────────────────────────
     ['mcdonald',           'food', 'McDonald\'s'],
-    ['mcdonalds',          'food', 'McDonald\'s'],
     ['burger king',        'food', 'Burger King'],
     ['wendy',              'food', 'Wendy\'s'],
     ['taco bell',          'food', 'Taco Bell'],
@@ -77,23 +76,64 @@
     ['domino',             'food', 'Domino\'s'],
     ['pizza hut',          'food', 'Pizza Hut'],
     ['papa john',          'food', 'Papa John\'s'],
+    ['little caesar',      'food', 'Little Caesars'],
+    ['papa murphy',        'food', 'Papa Murphy\'s'],
     ['chick-fil-a',        'food', 'Chick-fil-A'],
     ['chick fil a',        'food', 'Chick-fil-A'],
     ['popeyes',            'food', 'Popeyes'],
+    ['raising cane',       'food', 'Raising Cane\'s'],
+    ['wingstop',           'food', 'Wingstop'],
     ['five guys',          'food', 'Five Guys'],
     ['shake shack',        'food', 'Shake Shack'],
+    ['smashburger',        'food', 'Smashburger'],
+    ['fatburger',          'food', 'Fatburger'],
+    ['habit burger',       'food', 'The Habit Burger'],
+    ['whataburger',        'food', 'Whataburger'],
+    ['sonic drive',        'food', 'Sonic'],
+    ['jack in the box',    'food', 'Jack in the Box'],
+    ['del taco',           'food', 'Del Taco'],
+    ['carl\'s jr',         'food', 'Carl\'s Jr.'],
+    ['carls jr',           'food', 'Carl\'s Jr.'],
+    ['hardee',             'food', 'Hardee\'s'],
+    ['culver',             'food', 'Culver\'s'],
+    ['cook out',           'food', 'Cook Out'],
     ['in-n-out',           'food', 'In-N-Out'],
     ['in n out',           'food', 'In-N-Out'],
     ['starbucks',          'food', 'Starbucks'],
+    ['dutch bros',         'food', 'Dutch Bros'],
+    ['blue bottle',        'food', 'Blue Bottle Coffee'],
+    ['peet\'s',            'food', 'Peet\'s Coffee'],
+    ['peets coffee',       'food', 'Peet\'s Coffee'],
     ['dunkin',             'food', 'Dunkin\''],
     ['panera',             'food', 'Panera Bread'],
     ['panda express',      'food', 'Panda Express'],
     ['olive garden',       'food', 'Olive Garden'],
     ['applebee',           'food', 'Applebee\'s'],
-    ['chili',              'food', 'Chili\'s'],
+    ['chili\'s',           'food', 'Chili\'s'],
+    ['chilis',             'food', 'Chili\'s'],
     ['ihop',               'food', 'IHOP'],
     ['denny',              'food', 'Denny\'s'],
     ['waffle house',       'food', 'Waffle House'],
+    ['cracker barrel',     'food', 'Cracker Barrel'],
+    ['texas roadhouse',    'food', 'Texas Roadhouse'],
+    ['outback',            'food', 'Outback Steakhouse'],
+    ['red lobster',        'food', 'Red Lobster'],
+    ['red robin',          'food', 'Red Robin'],
+    ['buffalo wild',       'food', 'Buffalo Wild Wings'],
+    ['yard house',         'food', 'Yard House'],
+    ['cheesecake factory', 'food', 'Cheesecake Factory'],
+    ['pf chang',           'food', 'P.F. Chang\'s'],
+    ['benihana',           'food', 'Benihana'],
+    ['noodles & company',  'food', 'Noodles & Company'],
+    ['sweetgreen',         'food', 'Sweetgreen'],
+    ['cava ',              'food', 'Cava'],
+    ['mod pizza',          'food', 'MOD Pizza'],
+    ['blaze pizza',        'food', 'Blaze Pizza'],
+    ['jersey mike',        'food', 'Jersey Mike\'s'],
+    ['jimmy john',         'food', 'Jimmy John\'s'],
+    ['firehouse sub',      'food', 'Firehouse Subs'],
+    ['potbelly',           'food', 'Potbelly'],
+    ['round table',        'food', 'Round Table Pizza'],
     ['doordash',           'food', 'DoorDash'],
     ['uber eats',          'food', 'Uber Eats'],
     ['grubhub',            'food', 'Grubhub'],
@@ -102,7 +142,95 @@
     ['seamless',           'food', 'Seamless'],
     ['caviar',             'food', 'Caviar'],
 
+    // ── Food & Dining — Semantic Keywords ─────────────────────────────────
+    // These catch independent/local restaurants by what they serve.
+    // Placed AFTER named chains so chains match first.
+    ['taco ',              'food', 'Taco Restaurant'],
+    ['tacos',              'food', 'Taco Restaurant'],
+    ['burrito',            'food', 'Mexican Restaurant'],
+    ['mexican',            'food', 'Mexican Restaurant'],
+    ['thai ',              'food', 'Thai Restaurant'],
+    ['thai street',        'food', 'Thai Restaurant'],
+    ['sushi',              'food', 'Sushi Restaurant'],
+    ['ramen',              'food', 'Ramen Restaurant'],
+    ['pho ',               'food', 'Vietnamese Restaurant'],
+    ['vietnamese',         'food', 'Vietnamese Restaurant'],
+    ['chinese',            'food', 'Chinese Restaurant'],
+    ['dim sum',            'food', 'Chinese Restaurant'],
+    ['korean bbq',         'food', 'Korean Restaurant'],
+    ['korean ',            'food', 'Korean Restaurant'],
+    ['japanese',           'food', 'Japanese Restaurant'],
+    ['indian ',            'food', 'Indian Restaurant'],
+    ['curry ',             'food', 'Indian Restaurant'],
+    ['mediterranean',      'food', 'Mediterranean Restaurant'],
+    ['greek ',             'food', 'Greek Restaurant'],
+    ['italian ',           'food', 'Italian Restaurant'],
+    ['pizza',              'food', 'Pizza Restaurant'],
+    ['burger',             'food', 'Burger Restaurant'],
+    ['bbq ',               'food', 'BBQ Restaurant'],
+    ['barbecue',           'food', 'BBQ Restaurant'],
+    ['steakhouse',         'food', 'Steakhouse'],
+    ['steak ',             'food', 'Steakhouse'],
+    ['seafood',            'food', 'Seafood Restaurant'],
+    ['sandwich',           'food', 'Sandwich Shop'],
+    ['deli ',              'food', 'Deli'],
+    ['bakery',             'food', 'Bakery'],
+    ['cafe ',              'food', 'Cafe'],
+    ['coffee',             'food', 'Coffee Shop'],
+    ['boba',               'food', 'Boba Tea'],
+    ['bubble tea',         'food', 'Boba Tea'],
+    ['milk tea',           'food', 'Boba Tea'],
+    ['ice cream',          'food', 'Ice Cream'],
+    ['gelato',             'food', 'Ice Cream'],
+    ['frozen yogurt',      'food', 'Frozen Yogurt'],
+    ['froyo',              'food', 'Frozen Yogurt'],
+    ['donut',              'food', 'Donut Shop'],
+    ['doughnut',           'food', 'Donut Shop'],
+    ['bagel',              'food', 'Bagel Shop'],
+    ['brunch',             'food', 'Brunch Restaurant'],
+    ['breakfast',          'food', 'Breakfast Restaurant'],
+    ['bistro',             'food', 'Restaurant'],
+    ['grill ',             'food', 'Restaurant'],
+    ['kitchen',            'food', 'Restaurant'],
+    ['eatery',             'food', 'Restaurant'],
+    ['restaurant',         'food', 'Restaurant'],
+    ['dining',             'food', 'Restaurant'],
+    ['food hall',          'food', 'Food Hall'],
+    ['food truck',         'food', 'Food Truck'],
+    ['wing ',              'food', 'Wings Restaurant'],
+    ['wings',              'food', 'Wings Restaurant'],
+    ['noodle',             'food', 'Noodle Restaurant'],
+    ['dumpling',           'food', 'Dumpling Restaurant'],
+    ['falafel',            'food', 'Middle Eastern Restaurant'],
+    ['shawarma',           'food', 'Middle Eastern Restaurant'],
+    ['kebab',              'food', 'Middle Eastern Restaurant'],
+    ['tapas',              'food', 'Spanish Restaurant'],
+    ['izakaya',            'food', 'Japanese Restaurant'],
+    ['teriyaki',           'food', 'Japanese Restaurant'],
+    ['hibachi',            'food', 'Japanese Restaurant'],
+    ['hot pot',            'food', 'Hot Pot Restaurant'],
+    ['hotpot',             'food', 'Hot Pot Restaurant'],
+    ['fondue',             'food', 'Fondue Restaurant'],
+    ['crepe',              'food', 'Crepe Restaurant'],
+    ['waffle',             'food', 'Waffle Restaurant'],
+    ['pancake',            'food', 'Breakfast Restaurant'],
+    ['smoothie',           'food', 'Smoothie Bar'],
+    ['juice bar',          'food', 'Juice Bar'],
+    ['acai',               'food', 'Acai Bowl'],
+    ['poke ',              'food', 'Poke Bowl'],
+    ['bowl ',              'food', 'Restaurant'],
+    ['bar & grill',        'food', 'Bar & Grill'],
+    ['pub ',               'food', 'Pub'],
+    ['tavern',             'food', 'Tavern'],
+    ['brewery',            'food', 'Brewery'],
+    ['brewpub',            'food', 'Brewpub'],
+    ['winery',             'food', 'Winery'],
+    // Note: "SQ *" (Square) and "TST*" (Toast) prefixes are stripped by
+    // cleanMerchantName() before categorization, so we rely on the actual
+    // merchant name keywords above rather than broad POS-prefix rules.
+
     // ── Groceries ──────────────────────────────────────────────────────────
+    ['wholefds',           'groceries', 'Whole Foods'],   // truncated form on statements
     ['whole foods',        'groceries', 'Whole Foods'],
     ['trader joe',         'groceries', 'Trader Joe\'s'],
     ['safeway',            'groceries', 'Safeway'],
@@ -123,6 +251,17 @@
     ['heb',                'groceries', 'H-E-B'],
     ['winco',              'groceries', 'WinCo'],
     ['smart & final',      'groceries', 'Smart & Final'],
+    ['qfc',                'groceries', 'QFC'],
+    ['fred meyer',         'groceries', 'Fred Meyer'],
+    ['ralphs',             'groceries', 'Ralphs'],
+    ['vons',               'groceries', 'Vons'],
+    ['pavilions',          'groceries', 'Pavilions'],
+    ['albertsons',         'groceries', 'Albertsons'],
+    ['stater bros',        'groceries', 'Stater Bros'],
+    ['food 4 less',        'groceries', 'Food 4 Less'],
+    ['lucky supermarket',  'groceries', 'Lucky'],
+    ['market basket',      'groceries', 'Market Basket'],
+    ['piggly wiggly',      'groceries', 'Piggly Wiggly'],
     ['grocery',            'groceries', 'Grocery Store'],
     ['supermarket',        'groceries', 'Supermarket'],
 
@@ -192,8 +331,22 @@
     ['h&m',                'shopping', 'H&M'],
     ['zara',               'shopping', 'Zara'],
     ['uniqlo',             'shopping', 'Uniqlo'],
+    ['daiso',              'shopping', 'Daiso'],
     ['nike',               'shopping', 'Nike'],
     ['adidas',             'shopping', 'Adidas'],
+    ['under armour',       'shopping', 'Under Armour'],
+    ['lululemon',          'shopping', 'Lululemon'],
+    ['athleta',            'shopping', 'Athleta'],
+    ['sephora',            'shopping', 'Sephora'],
+    ['ulta',               'shopping', 'Ulta Beauty'],
+    ['bath & body',        'shopping', 'Bath & Body Works'],
+    ['victoria secret',    'shopping', 'Victoria\'s Secret'],
+    ['barnes & noble',     'shopping', 'Barnes & Noble'],
+    ['staples',            'shopping', 'Staples'],
+    ['office depot',       'shopping', 'Office Depot'],
+    ['dollar tree',        'shopping', 'Dollar Tree'],
+    ['dollar general',     'shopping', 'Dollar General'],
+    ['five below',         'shopping', 'Five Below'],
     ['etsy',               'shopping', 'Etsy'],
     ['ebay',               'shopping', 'eBay'],
     ['wayfair',            'shopping', 'Wayfair'],
@@ -1241,17 +1394,50 @@
      * Synchronously categorizes a transaction description using the in-memory
      * rules cache. User-defined rules are checked first.
      *
+     * Strips common payment-network prefixes (SQ *, TST*, PP*, etc.) and
+     * trailing city/state/store-number noise before matching, so that semantic
+     * keyword rules (e.g. 'thai ', 'ramen', 'pizza') work correctly even on
+     * raw bank descriptions like "SQ *8E8 THAI STREET FO LOS ANGELES CA".
+     *
      * @param {string} description - Raw merchant description from bank statement
      * @returns {string} categoryId — defaults to 'other' if no rule matches
      */
     categorizeTransaction: function (description) {
       if (!description) return 'other';
 
+      // Normalize: lowercase, strip payment-network prefixes, strip city/state suffix
+      let normalized = description.toLowerCase().trim();
+
+      // Strip payment-network / POS prefixes
+      normalized = normalized.replace(
+        /^(?:sq\s*\*\s*|tst\*\s*|pp\s*\*\s*|sp\s*\*\s*|apl\s*\*\s*|dd\s*\*\s*|doordash\s*\*\s*|lne\s*\*\s*|wal\s*\*\s*|wm\s+supercenter\s*)/,
+        ''
+      );
+
+      // Strip bank transaction-type prefixes
+      normalized = normalized.replace(
+        /^(?:check\s+card\s+purchase|debit\s+card\s+purchase|pos\s+purchase|pos\s+debit|ach\s+debit|ach\s+credit|online\s+transfer|wire\s+transfer|bill\s+payment|recurring\s+payment|preauthorized\s+debit|electronic\s+payment)\s+/,
+        ''
+      );
+
+      // Strip trailing city + 2-letter state (e.g. "LOS ANGELES CA", "RENTON WA")
+      normalized = normalized.replace(/\s+[a-z\s]{0,20}[a-z]{2}\s*$/, function (match) {
+        // Only strip if last 2 chars look like a state abbreviation (were uppercase before lowercasing)
+        return '';
+      });
+
+      // Strip trailing store/location numbers
+      normalized = normalized.replace(/\s+\d{3,}$/, '');
+      normalized = normalized.replace(/\s*#\d+/g, '');
+
+      // Match against rules cache using both the normalized and original lowercased description
       const lower = description.toLowerCase();
 
       for (let i = 0; i < _rulesCache.length; i++) {
         const rule = _rulesCache[i];
-        if (lower.indexOf(rule.pattern) !== -1) {
+        // Check normalized first (catches semantic keywords after prefix stripping),
+        // then fall back to original (catches patterns like 'directpay', 'wholefds', etc.)
+        if (normalized.indexOf(rule.pattern) !== -1 || lower.indexOf(rule.pattern) !== -1) {
           // Increment matchCount asynchronously (fire-and-forget)
           if (rule.id != null) {
             _put('merchant_rules', Object.assign({}, rule, { matchCount: (rule.matchCount || 0) + 1 }))

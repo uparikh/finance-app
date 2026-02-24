@@ -209,12 +209,17 @@
 
   /**
    * Reads current filter state, queries DB, renders list.
+   * When _currentMonthKey === 'all', loads ALL transactions across every month.
    */
   async function loadTransactions() {
     if (!_currentMonthKey) return;
 
     try {
-      _allTransactions = await FinanceDB.getTransactionsByMonth(_currentMonthKey);
+      if (_currentMonthKey === 'all') {
+        _allTransactions = await FinanceDB.getAllTransactions();
+      } else {
+        _allTransactions = await FinanceDB.getTransactionsByMonth(_currentMonthKey);
+      }
     } catch (err) {
       console.error('[TransactionsScreen] loadTransactions failed:', err);
       _allTransactions = [];
@@ -308,10 +313,11 @@
     if (transactions.length === 0) {
       // Determine which empty state to show
       if (_allTransactions.length === 0) {
+        const isAllView = _currentMonthKey === 'all';
         listEl.innerHTML =
           '<div class="empty-state">' +
             '<div class="empty-state-icon">📄</div>' +
-            '<p class="empty-state-title">No data for this month</p>' +
+            '<p class="empty-state-title">' + (isAllView ? 'No transactions yet' : 'No data for this month') + '</p>' +
             '<p class="empty-state-subtitle">Upload a bank statement to see your transactions here.</p>' +
             '<button class="btn btn-primary" style="margin-top:16px;" onclick="navigateTo(\'upload\')">' +
               'Upload Statement →' +
@@ -432,6 +438,7 @@
 
   /**
    * Populates the month selector dropdown with all months that have data.
+   * Always includes an "All Transactions" option at the top.
    */
   async function _populateMonthSelector() {
     const select = el('txn-month-select');
@@ -442,13 +449,14 @@
 
       select.innerHTML = '';
 
-      if (months.length === 0) {
-        const opt = document.createElement('option');
-        opt.value = '';
-        opt.textContent = 'No data yet';
-        select.appendChild(opt);
-        return;
-      }
+      // "All Transactions" option — always present at the top
+      const allOpt = document.createElement('option');
+      allOpt.value = 'all';
+      allOpt.textContent = '📋 All Transactions';
+      if (_currentMonthKey === 'all') allOpt.selected = true;
+      select.appendChild(allOpt);
+
+      if (months.length === 0) return;
 
       // Show most recent first
       const reversed = months.slice().reverse();
@@ -810,11 +818,11 @@
     try {
       await FinanceDB.updateTransaction(_editingId, changes);
       // recomputeMonthlySummary is called inside updateTransaction already,
-      // but call it again if monthKey changed
+      // but call it again if monthKey changed (skip for 'all' view)
       if (monthKey && monthKey !== _currentMonthKey) {
         await FinanceDB.recomputeMonthlySummary(monthKey);
       }
-      if (_currentMonthKey) {
+      if (_currentMonthKey && _currentMonthKey !== 'all') {
         await FinanceDB.recomputeMonthlySummary(_currentMonthKey);
       }
     } catch (err) {
@@ -889,7 +897,8 @@
 
     try {
       await FinanceDB.deleteTransaction(id);
-      if (_currentMonthKey) {
+      // Don't call recomputeMonthlySummary for 'all' view — deleteTransaction handles it internally
+      if (_currentMonthKey && _currentMonthKey !== 'all') {
         await FinanceDB.recomputeMonthlySummary(_currentMonthKey);
       }
     } catch (err) {
@@ -956,7 +965,7 @@
       console.error('[TransactionsScreen] Failed to load categories/accounts:', err);
     }
 
-    // Determine initial month
+    // Determine initial month — default to most recent, or 'all' if explicitly requested
     let initialMonth = navParams.monthKey || null;
     if (!initialMonth) {
       try {
@@ -967,7 +976,7 @@
       }
     }
 
-    _currentMonthKey   = initialMonth;
+    _currentMonthKey   = initialMonth || 'all';
     _currentCategoryId = navParams.categoryId || null;
     _currentAccountId  = navParams.accountId  || null;
     _currentSearch     = '';
@@ -1045,30 +1054,14 @@
     }
 
     // Load transactions and render
-    if (_currentMonthKey) {
-      await loadTransactions();
-      _renderCategoryChips();
-      _populateAccountFilter();
+    await loadTransactions();
+    _renderCategoryChips();
+    _populateAccountFilter();
 
-      // Apply initial category filter from params (after chips are rendered)
-      if (_currentCategoryId) {
-        _updateChipActiveState(_currentCategoryId);
-        applyFilters();
-      }
-    } else {
-      // No data at all
-      const listEl = el('txn-list');
-      if (listEl) {
-        listEl.innerHTML =
-          '<div class="empty-state">' +
-            '<div class="empty-state-icon">📄</div>' +
-            '<p class="empty-state-title">No data yet</p>' +
-            '<p class="empty-state-subtitle">Upload a bank statement to get started.</p>' +
-            '<button class="btn btn-primary" style="margin-top:16px;" onclick="navigateTo(\'upload\')">' +
-              'Upload Statement →' +
-            '</button>' +
-          '</div>';
-      }
+    // Apply initial category filter from params (after chips are rendered)
+    if (_currentCategoryId) {
+      _updateChipActiveState(_currentCategoryId);
+      applyFilters();
     }
 
     console.log('[TransactionsScreen] init() complete ✅');
