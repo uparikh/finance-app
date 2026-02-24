@@ -170,16 +170,16 @@
       </div>
 
       <!-- 7. Credit Score -->
-      <div class="chart-card" id="credit-score-card" style="display:none;">
+      <div class="chart-card" id="credit-score-card">
         <div class="chart-card-title">
           <span>Credit Score</span>
           <span style="font-size:12px;color:var(--text-secondary);">FICO Score 8</span>
         </div>
-        <div style="display:flex;align-items:stretch;height:180px;">
-          <canvas id="dash-credit-yaxis" style="flex-shrink:0;width:52px;height:180px;display:block;"></canvas>
-          <div style="flex:1;overflow-x:auto;-webkit-overflow-scrolling:touch;">
-            <div id="dash-credit-inner" style="position:relative;height:180px;min-width:100%;">
-              <canvas id="dash-credit-chart" style="display:block;height:180px;"></canvas>
+        <!-- Populated by DashboardScreen.renderCreditScoreCard() -->
+        <div id="credit-score-content">
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 0;gap:6px;">
+            <div style="font-size:13px;color:var(--text-secondary);text-align:center;">
+              Upload a Discover statement to see your FICO score
             </div>
           </div>
         </div>

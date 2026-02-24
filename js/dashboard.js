@@ -237,15 +237,13 @@
         const last6 = allSummaries.slice(-6);
         DashboardScreen.renderTrendChart(last6);
 
-        // Credit score chart
+        // Credit score card (always rendered — shows placeholder if no data)
         try {
           const creditScores = await FinanceDB.getCreditScores();
-          if (creditScores && creditScores.length >= 1) {
-            DashboardScreen.renderCreditScoreChart(creditScores);
-            const creditCard = el('credit-score-card');
-            if (creditCard) creditCard.style.display = '';
-          }
-        } catch (e) { /* non-fatal */ }
+          DashboardScreen.renderCreditScoreCard(creditScores || []);
+        } catch (e) {
+          DashboardScreen.renderCreditScoreCard([]);
+        }
 
         // Account balances
         DashboardScreen.renderAccountBalances();
@@ -549,126 +547,74 @@
       });
     },
 
-    // ── renderCreditScoreChart ────────────────────────────────────────────────
+    // ── renderCreditScoreCard ─────────────────────────────────────────────────
 
     /**
-     * Renders a scrollable credit score line chart on the dashboard.
-     * Handles single data point gracefully by showing a score badge instead of
-     * a chart with a single orphaned dot.
-     * @param {object[]} scores  Sorted ascending by monthKey
+     * Renders the credit score card into #credit-score-content.
+     * - No scores: shows a placeholder prompt
+     * - 1 score: shows a large score badge with label and date
+     * - 2+ scores: shows a responsive Chart.js line chart
+     * @param {object[]} scores  Sorted ascending by monthKey [{monthKey, score, source}]
      */
-    renderCreditScoreChart: function (scores) {
+    renderCreditScoreCard: function (scores) {
       if (_creditChart) {
         _creditChart.destroy();
         _creditChart = null;
       }
 
-      const canvas      = el('dash-credit-chart');
-      const innerEl     = el('dash-credit-inner');
-      const yAxisCanvas = el('dash-credit-yaxis');
-      if (!canvas || !innerEl || !yAxisCanvas) return;
-      if (!scores || scores.length === 0) return;
+      const content = el('credit-score-content');
+      if (!content) return;
 
       const isDark    = document.documentElement.getAttribute('data-theme') === 'dark';
       const textColor = isDark ? '#94A3B8' : '#6B7280';
       const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
 
-      const Y_AXIS_W = 52;
-      const CHART_H  = 180;
-      const PT_WIDTH = 56;
+      // ── No data: placeholder ──────────────────────────────────────────────
+      if (!scores || scores.length === 0) {
+        content.innerHTML =
+          '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 0;gap:6px;">' +
+            '<div style="font-size:13px;color:var(--text-secondary);text-align:center;">' +
+              'Upload a Discover statement to see your FICO score' +
+            '</div>' +
+          '</div>';
+        return;
+      }
 
       const labels = scores.map(function (s) { return monthKeyToShort(s.monthKey); });
       const data   = scores.map(function (s) { return s.score; });
 
-      // ── Single data point: render a score badge instead of a chart ────────
+      function scoreColor(v) { return v >= 750 ? '#10B981' : v >= 700 ? '#F59E0B' : '#EF4444'; }
+      function scoreLabel(v) { return v >= 750 ? 'Excellent' : v >= 700 ? 'Good' : 'Fair'; }
+
+      // ── Single data point: large badge ────────────────────────────────────
       if (scores.length === 1) {
         const score = data[0];
-        const scoreColor = score >= 750 ? '#10B981' : score >= 700 ? '#F59E0B' : '#EF4444';
-        const scoreLabel = score >= 750 ? 'Excellent' : score >= 700 ? 'Good' : 'Fair';
-        const monthLabel = labels[0];
-
-        // Hide the scrollable chart area and show a badge instead
-        const chartWrapper = innerEl.parentElement && innerEl.parentElement.parentElement;
-        if (chartWrapper) {
-          chartWrapper.innerHTML =
-            '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-            'padding:20px 0;gap:6px;">' +
-              '<div style="font-size:52px;font-weight:800;color:' + scoreColor + ';line-height:1;">' + score + '</div>' +
-              '<div style="font-size:14px;font-weight:600;color:' + scoreColor + ';">' + scoreLabel + '</div>' +
-              '<div style="font-size:12px;color:' + textColor + ';margin-top:4px;">As of ' + monthLabel + '</div>' +
-              '<div style="font-size:11px;color:' + textColor + ';opacity:0.7;margin-top:2px;">' +
-                'Upload more statements to see your score trend' +
-              '</div>' +
-            '</div>';
-        }
+        const color = scoreColor(score);
+        const label = scoreLabel(score);
+        const month = labels[0];
+        content.innerHTML =
+          '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 0;gap:6px;">' +
+            '<div style="font-size:64px;font-weight:800;color:' + color + ';line-height:1;letter-spacing:-2px;">' + score + '</div>' +
+            '<div style="font-size:15px;font-weight:700;color:' + color + ';">' + label + '</div>' +
+            '<div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">As of ' + month + '</div>' +
+            '<div style="font-size:11px;color:var(--text-secondary);opacity:0.7;margin-top:2px;">Upload more statements to see your score trend</div>' +
+          '</div>';
         return;
       }
 
-      // ── Multiple data points: render the scrollable line chart ────────────
+      // ── Multiple data points: responsive line chart ───────────────────────
+      const pointColors = data.map(scoreColor);
 
-      // Color each point by score range
-      const pointColors = data.map(function (v) {
-        if (v >= 750) return '#10B981';
-        if (v >= 700) return '#F59E0B';
-        return '#EF4444';
-      });
-
-      // Y-axis: tight range around actual scores with 15-point padding
       const scoreMin = Math.min.apply(null, data);
       const scoreMax = Math.max.apply(null, data);
       const scorePad = Math.max(15, Math.round((scoreMax - scoreMin) * 0.2));
       const rawMin   = Math.max(300, scoreMin - scorePad);
       const rawMax   = Math.min(850, scoreMax + scorePad);
 
-      const DPR_C = window.devicePixelRatio || 1; // retina fix for credit chart
-
-      // Use window.innerWidth as fallback when card is hidden (offsetWidth = 0)
-      const parentW = innerEl.parentElement ? innerEl.parentElement.offsetWidth : 0;
-      const availW  = parentW > 0 ? parentW : Math.max(200, window.innerWidth - Y_AXIS_W - 48);
-      const ptW     = Math.max(PT_WIDTH, Math.floor(availW / Math.min(12, labels.length)));
-      const chartW  = Math.max(availW, labels.length * ptW);
-
-      canvas.width  = chartW;
-      canvas.height = CHART_H;
-      canvas.style.width  = chartW + 'px';
-      canvas.style.height = CHART_H + 'px';
-
-      // Y-axis canvas: scale for retina
-      yAxisCanvas.width  = Y_AXIS_W * DPR_C;
-      yAxisCanvas.height = CHART_H * DPR_C;
-      yAxisCanvas.style.width  = Y_AXIS_W + 'px';
-      yAxisCanvas.style.height = CHART_H + 'px';
-
-      innerEl.style.width  = chartW + 'px';
-      innerEl.style.height = CHART_H + 'px';
-
-      // Ensure outer wrapper has correct height
-      var outerWrapper = innerEl.parentElement && innerEl.parentElement.parentElement;
-      if (outerWrapper) outerWrapper.style.height = CHART_H + 'px';
-
-      requestAnimationFrame(function () {
-        var sw = innerEl.parentElement;
-        if (sw) sw.scrollLeft = sw.scrollWidth;
-      });
-
-      function drawYAxis() {
-        var ctx = yAxisCanvas.getContext('2d');
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.clearRect(0, 0, yAxisCanvas.width, yAxisCanvas.height);
-        ctx.scale(DPR_C, DPR_C);
-        ctx.fillStyle = textColor;
-        ctx.font = '11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif';
-        ctx.textAlign = 'right';
-        var steps = 4;
-        var top = 12, bottom = CHART_H - 24, h = bottom - top;
-        for (var i = 0; i <= steps; i++) {
-          var val = rawMin + (rawMax - rawMin) * (i / steps);
-          var y   = bottom - (h * i / steps);
-          ctx.fillText(Math.round(val), Y_AXIS_W - 4, y + 4);
-        }
-        ctx.restore();
-      }
+      // Build chart HTML
+      content.innerHTML = '<canvas id="dash-credit-chart" style="display:block;width:100%;height:180px;"></canvas>';
+      const canvas = el('dash-credit-chart');
+      if (!canvas) return;
 
       _creditChart = new Chart(canvas, {
         type: 'line',
@@ -689,44 +635,29 @@
           }],
         },
         options: {
-          responsive: false,
+          responsive: true,
           maintainAspectRatio: false,
           interaction: { mode: 'index', intersect: false },
           plugins: {
             legend: { display: false },
             tooltip: {
               callbacks: {
-                label: function (ctx) {
-                  return ' FICO: ' + ctx.raw;
-                },
-                title: function (items) {
-                  return items[0] ? items[0].label : '';
-                },
+                label: function (ctx) { return ' FICO: ' + ctx.raw + ' — ' + scoreLabel(ctx.raw); },
+                title: function (items) { return items[0] ? items[0].label : ''; },
               },
             },
           },
           scales: {
-            x: {
-              grid: { display: false },
-              ticks: {
-                color: textColor,
-                maxRotation: 0,
-                maxTicksLimit: 12,
-                font: { size: 11 },
-              },
-            },
+            x: { grid: { display: false }, ticks: { color: textColor, maxRotation: 0, maxTicksLimit: 12, font: { size: 11 } } },
             y: {
-              min: rawMin,
-              max: rawMax,
+              min: rawMin, max: rawMax,
               grid: { color: gridColor },
-              ticks: { display: false },
+              ticks: { color: textColor, callback: function (v) { return Math.round(v); } },
             },
-          },
-          animation: {
-            onComplete: function () { drawYAxis(); },
           },
         },
       });
+      requestAnimationFrame(function () { if (_creditChart) _creditChart.resize(); });
     },
 
     // ── renderAccountBalances ─────────────────────────────────────────────────
