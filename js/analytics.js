@@ -315,21 +315,18 @@
     overlay.addEventListener('touchmove',  _onTouchMove,  { passive: false }); // passive:false needed for preventDefault
     overlay.addEventListener('touchend',   _onTouchEnd,   { passive: true });
 
-    // Wait for the slide-in animation to complete (320ms) before rendering the chart.
-    // Rendering during the animation causes Chart.js to measure wrong canvas dimensions
-    // because the overlay is still off-screen / partially translated.
-    setTimeout(function () {
-      // Prevent browser scroll anchoring from moving content.scrollTop
-      content.style.overflowAnchor = 'none';
-      content.scrollTop = 0;
-      renderFn(content);
-      content.scrollTop = 0;
-      // The chart's internal rAF sets scrollLeft on the inner scroll wrapper.
-      // Wait for all rAF chains to complete before final scroll reset.
-      setTimeout(function () {
+    // Give the DOM two frames to paint the overlay before rendering the chart.
+    // The overlay is now on document.body so position:fixed is viewport-relative.
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
         content.scrollTop = 0;
-      }, 100);
-    }, 340);
+        renderFn(content);
+        // Reset scroll after renderFn builds the DOM
+        requestAnimationFrame(function () {
+          content.scrollTop = 0;
+        });
+      });
+    });
   }
 
   /**
@@ -859,6 +856,17 @@
     // ── init ──────────────────────────────────────────────────────────────────
 
     init: async function () {
+      // Move overlay divs to document.body so position:fixed works correctly.
+      // CSS transforms on ancestor elements (e.g. .screen translateY) break
+      // position:fixed children — they become positioned relative to the
+      // transformed ancestor instead of the viewport.
+      ['analytics-drilldown', 'cumulative-detail-overlay'].forEach(function (id) {
+        var overlay = document.getElementById(id);
+        if (overlay && overlay.parentElement !== document.body) {
+          document.body.appendChild(overlay);
+        }
+      });
+
       // Fix B1: If returning to analytics while drill-down is open, close it instantly
       closeDrilldownInstant();
 
