@@ -187,11 +187,17 @@
     // Clear content
     content.innerHTML = '';
 
+    // Lock body scroll so the analytics page doesn't scroll behind the overlay
+    // (iOS ignores position:fixed for scroll prevention without this)
+    document.body.style.overflow = 'hidden';
+
     // Show overlay — start off-screen right, slide in
     overlay.style.transition = 'none';
     overlay.style.transform  = 'translateX(100%)';
     overlay.style.opacity    = '0';
     overlay.style.display    = 'flex';
+    // Scroll content to top so chart is immediately visible
+    content.scrollTop = 0;
     requestAnimationFrame(function () {
       overlay.style.transition = 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease';
       overlay.style.transform  = 'translateX(0)';
@@ -334,6 +340,9 @@
   function _finishCloseDrilldown() {
     const overlay = el('analytics-drilldown');
 
+    // Restore body scroll
+    document.body.style.overflow = '';
+
     // Hide and clean up after animation
     setTimeout(function () {
       if (overlay) {
@@ -368,6 +377,7 @@
     overlay.style.display    = 'none';
     _removeDrillGestureListeners(overlay);
     _drillChart = destroyChart(_drillChart);
+    document.body.style.overflow = '';
   }
 
   // ─── Drill-Down Chart Builders ───────────────────────────────────────────────
@@ -1062,6 +1072,9 @@
       const overlay = el('cumulative-detail-overlay');
       if (!overlay) return;
 
+      // Lock body scroll
+      document.body.style.overflow = 'hidden';
+
       // Slide in
       overlay.style.transition = 'none';
       overlay.style.transform  = 'translateX(100%)';
@@ -1109,7 +1122,7 @@
         overlay.style.transition = 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease';
         if (_g.direction === 'horizontal' && dx > 0 && _g.edgeSwipe && dx > w * 0.4) {
           overlay.style.transform = 'translateX(100%)'; overlay.style.opacity = '0';
-          setTimeout(function () { overlay.style.display = 'none'; overlay.style.opacity = '1'; overlay.style.transition = 'none'; }, 300);
+          setTimeout(function () { overlay.style.display = 'none'; overlay.style.opacity = '1'; overlay.style.transition = 'none'; document.body.style.overflow = ''; }, 300);
         } else { overlay.style.transform = 'translateX(0)'; overlay.style.opacity = '1'; }
       }
       if (overlay._cumTS) { overlay.removeEventListener('touchstart', overlay._cumTS); overlay.removeEventListener('touchmove', overlay._cumTM); overlay.removeEventListener('touchend', overlay._cumTE); }
@@ -1128,6 +1141,7 @@
       overlay.style.transform  = 'translateX(100%)';
       setTimeout(function () {
         overlay.style.display = 'none'; overlay.style.transition = 'none';
+        document.body.style.overflow = '';
         if (_detailChart) { _detailChart.destroy(); _detailChart = null; }
       }, 300);
     },

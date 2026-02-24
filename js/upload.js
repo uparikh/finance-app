@@ -487,6 +487,53 @@
         '</div>';
     }
 
+    // ── FICO Credit Score section (Discover statements only) ──────────────
+    // Show the extracted score with an editable input so the user can verify/correct it.
+    const ficoCardEl = el('review-fico-card');
+    if (ficoCardEl) {
+      if (parseResult.bank === 'discover' || parseResult.bank === 'discover-credit') {
+        const score = parseResult.creditScore || null;
+        const scoreColor = score ? (score >= 750 ? '#10B981' : score >= 700 ? '#F59E0B' : '#EF4444') : 'var(--text-secondary)';
+        const scoreLabel = score ? (score >= 750 ? 'Excellent' : score >= 700 ? 'Good' : 'Fair') : '';
+
+        ficoCardEl.style.display = '';
+        ficoCardEl.innerHTML =
+          '<div style="display:flex;align-items:center;gap:12px;">' +
+            '<div style="font-size:20px;">📊</div>' +
+            '<div style="flex:1;">' +
+              '<div style="font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:6px;">FICO® Credit Score</div>' +
+              '<div style="display:flex;align-items:center;gap:10px;">' +
+                '<input id="review-fico-input" type="number" min="300" max="850" ' +
+                  'value="' + (score || '') + '" ' +
+                  'placeholder="Not found" ' +
+                  'style="width:80px;padding:6px 10px;border-radius:8px;border:1.5px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:16px;font-weight:700;text-align:center;" ' +
+                  'inputmode="numeric">' +
+                (score ? '<span style="font-size:13px;font-weight:600;color:' + scoreColor + ';">' + scoreLabel + '</span>' : '') +
+                '<span style="font-size:12px;color:var(--text-secondary);">Score 8 · TransUnion</span>' +
+              '</div>' +
+              '<div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">' +
+                (score ? 'Extracted from statement. Edit if incorrect.' : '⚠️ Score not found — enter manually if you know it.') +
+              '</div>' +
+            '</div>' +
+          '</div>';
+
+        // Wire input change to update currentParseResult.creditScore
+        const ficoInput = el('review-fico-input');
+        if (ficoInput) {
+          ficoInput.addEventListener('input', function () {
+            const val = parseInt(ficoInput.value, 10);
+            if (!isNaN(val) && val >= 300 && val <= 850) {
+              currentParseResult.creditScore = val;
+            } else if (!ficoInput.value) {
+              currentParseResult.creditScore = null;
+            }
+          });
+        }
+      } else {
+        ficoCardEl.style.display = 'none';
+      }
+    }
+
     // Update save button text
     updateSaveButton();
 

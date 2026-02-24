@@ -41,6 +41,9 @@
   /** ID of the transaction currently being edited */
   let _editingId = null;
 
+  /** Original merchant name of the transaction being edited (before any changes) */
+  let _originalMerchantName = null;
+
   /** Debounce timer for search input */
   let _searchDebounce = null;
 
@@ -702,6 +705,7 @@
       }
 
       _editingId = transactionId;
+      _originalMerchantName = txn.merchantName || txn.description || '';
 
       // Populate fields
       const nameInput   = el('txn-edit-merchant-name');
@@ -838,41 +842,55 @@
     _renderCategoryChips();
     _populateAccountFilter();
 
-    // ── Merchant rule: remember this category for future imports ──────────
-    // Only act if the user actually changed the category
-    if (merchantName && categoryId && originalCategory !== categoryId) {
+    // ── Bulk update: propagate name and/or category changes to all matching transactions ──
+    const nameChanged     = _originalMerchantName &&
+                            merchantName.toLowerCase().trim() !== _originalMerchantName.toLowerCase().trim();
+    const categoryChanged = originalCategory !== categoryId;
+
+    if (merchantName && (nameChanged || categoryChanged)) {
       try {
-        // Save rule for future imports (always)
+        // Save rule for future imports
         await FinanceDB.saveMerchantCategoryRule(merchantName, categoryId);
 
-        // Count other transactions from this vendor with a different category
+        // Find all other transactions that share the ORIGINAL merchant name
         const allTxns = await FinanceDB.getAllTransactions();
-        const sameVendorDifferentCat = allTxns.filter(function (t) {
-          return (t.merchantName || '').toLowerCase().trim() === merchantName.toLowerCase().trim() &&
-                 t.id !== _editingId &&
-                 t.categoryId !== categoryId;
+        const originalLower = (_originalMerchantName || '').toLowerCase().trim();
+        const sameVendor = allTxns.filter(function (t) {
+          return t.id !== _editingId &&
+                 (t.merchantName || '').toLowerCase().trim() === originalLower;
         });
 
-        if (sameVendorDifferentCat.length > 0) {
-          const catName = _getCategoryName(categoryId);
+        if (sameVendor.length > 0) {
+          // Build a human-readable description of what will change
+          const changes = [];
+          if (nameChanged)     changes.push('rename to "' + merchantName + '"');
+          if (categoryChanged) changes.push('category → ' + _getCategoryName(categoryId));
+
           const confirmed = window.confirm(
-            '📌 Update all "' + merchantName + '" transactions?\n\n' +
-            'Found ' + sameVendorDifferentCat.length + ' other transaction' +
-            (sameVendorDifferentCat.length !== 1 ? 's' : '') +
-            ' from this vendor.\n\n' +
-            'Change all to "' + catName + '"?'
+            '📌 Apply to all "' + _originalMerchantName + '" transactions?\n\n' +
+            'Found ' + sameVendor.length + ' other transaction' +
+            (sameVendor.length !== 1 ? 's' : '') + ' from this vendor.\n\n' +
+            'Changes: ' + changes.join(', ') + '.'
           );
           if (confirmed) {
-            await FinanceDB.updateTransactionsByMerchant(merchantName, categoryId);
+            // Pass new name so updateTransactionsByMerchant renames them too
+            await FinanceDB.updateTransactionsByMerchant(
+              _originalMerchantName,
+              categoryId,
+              nameChanged ? merchantName : undefined
+            );
             await loadTransactions();
             _renderCategoryChips();
             _populateAccountFilter();
           }
         }
       } catch (err) {
-        console.warn('[TransactionsScreen] Merchant rule save failed (non-fatal):', err);
+        console.warn('[TransactionsScreen] Bulk merchant update failed (non-fatal):', err);
       }
     }
+
+    // Reset original name tracker
+    _originalMerchantName = null;
   }
 
   // ─── Delete Transaction ──────────────────────────────────────────────────────

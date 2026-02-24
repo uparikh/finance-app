@@ -926,10 +926,19 @@
      * @param {string} categoryId
      * @returns {Promise<number>} count of updated transactions
      */
-    updateTransactionsByMerchant: async function (merchantName, categoryId) {
+    /**
+     * Updates all transactions matching originalMerchantName with a new category
+     * and optionally a new merchant display name.
+     *
+     * @param {string} originalMerchantName  The current merchantName to match against
+     * @param {string} categoryId            New category to apply
+     * @param {string} [newMerchantName]     Optional new display name to apply
+     * @returns {Promise<number>}            Number of transactions updated
+     */
+    updateTransactionsByMerchant: async function (originalMerchantName, categoryId, newMerchantName) {
       try {
         const all = await FinanceDB.getAllTransactions();
-        const lower = merchantName.toLowerCase().trim();
+        const lower = originalMerchantName.toLowerCase().trim();
         const toUpdate = all.filter(function (t) {
           return (t.merchantName || '').toLowerCase().trim() === lower ||
                  (t.description  || '').toLowerCase().trim() === lower;
@@ -937,9 +946,15 @@
 
         if (toUpdate.length === 0) return 0;
 
+        // Build the changes object — always update category, optionally update name
+        const changes = { categoryId: categoryId, isManuallyEdited: true };
+        if (newMerchantName && newMerchantName.trim()) {
+          changes.merchantName = newMerchantName.trim();
+        }
+
         // Update each matching transaction
         for (const txn of toUpdate) {
-          const updated = Object.assign({}, txn, { categoryId: categoryId, isManuallyEdited: true });
+          const updated = Object.assign({}, txn, changes);
           await _put('transactions', updated);
         }
 
