@@ -1288,17 +1288,19 @@ function parseDiscover(text, pages) {
       .sort((a, b) => b.length - a.length)                  // longest first (greedy match)
       .join('|');
 
-    // Pattern A: MM/DD  DESCRIPTION  KNOWN_CATEGORY  $AMOUNT
+    // Pattern A: MM/DD  DESCRIPTION  KNOWN_CATEGORY  $AMOUNT [optional trailing text]
     // Uses the known category list as an anchor so the description boundary is unambiguous.
+    // Allow trailing content after the amount (PDF.js sometimes merges the next line's text).
     const txRegexA = new RegExp(
-      '^(\\d{2}\\/\\d{2})\\s+(.+?)\\s+(' + CATEGORY_ALTERNATION + ')\\s+[-]?\\$?([\\d,]+\\.\\d{2})\\s*$',
+      '^(\\d{2}\\/\\d{2})\\s+(.+?)\\s+(' + CATEGORY_ALTERNATION + ')\\s+[-]?\\$?([\\d,]+\\.\\d{2})(?:\\s.*)?$',
       'i'
     );
 
-    // Pattern B: MM/DD  DESCRIPTION  $AMOUNT (no merchant category — payments or simple purchases)
+    // Pattern B: MM/DD  DESCRIPTION  $AMOUNT [optional trailing text]
     // e.g. "10/05   DIRECTPAY FULL BALANCE   -$174.82"
     // e.g. "09/27   APPLE.COM/BILL 866-712-7753 CA   $2.15"
-    const txRegexB = /^(\d{2}\/\d{2})\s+(.+?)\s+([-]?\$[\d,]+\.\d{2})\s*$/;
+    // Allow trailing content after the amount (merged lines from PDF.js).
+    const txRegexB = /^(\d{2}\/\d{2})\s+(.+?)\s+([-]?\$[\d,]+\.\d{2})(?:\s.*)?$/;
 
     // Skip header/summary/boilerplate lines
     const skipPatterns = /^(trans\.?|date|description|amount|merchant|category|payments\s+and\s+credits|purchases|fees\s+and\s+interest|total\s+fees|total\s+interest|\d{4}\s+totals|year-to-date|interest\s+charge|annual\s+percentage|30\s+days|promo|type\s+of|purchases\s+\d|cash\s+advances|variable|previous\s+balance|new\s+balance|minimum|payment\s+due|cashback|rewards|earned|redeemed|see\s+details|open\s+to\s+close|page\s+\d|discover\.com|dial\s+711|po\s+box|carol\s+stream|hearing|mkq|26s|dit|apple\s+pay|continued\s+on|transactions\s+continued|fico|cardmember|udit\s+parikh|frisco|charlotte)/i;
