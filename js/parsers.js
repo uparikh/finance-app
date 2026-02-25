@@ -666,13 +666,25 @@ async function extractTextFromPDF(file) {
 function detectBank(text) {
   const t = text.toLowerCase();
 
-  // Check each institution's fingerprints
+  // ── Detection order matters — more specific fingerprints first ────────────
+  // Wells Fargo MUST come before Bilt because WF statements contain "BILTPROTECT"
+  // and "BPS*BILT RENT" as transaction descriptions, which would falsely match
+  // a bare t.includes('bilt') check.
+
   if (t.includes('ally bank') || t.includes('ally.com') || t.includes('ally financial')) {
     console.log('[Parser] Detected bank: Ally Bank');
     return 'ally';
   }
 
-  if (t.includes('bilt') || t.includes('biltrewards.com') || t.includes('bilt mastercard') || t.includes('bilt rewards')) {
+  // Wells Fargo — check before Bilt to avoid false positive on "BILTPROTECT" in WF statements
+  if (t.includes('wells fargo') || t.includes('wellsfargo.com')) {
+    console.log('[Parser] Detected bank: Wells Fargo');
+    return 'wells-fargo';
+  }
+
+  // Bilt — use specific fingerprints only (NOT bare 'bilt' which appears in WF statements)
+  if (t.includes('biltrewards.com') || t.includes('bilt mastercard') || t.includes('bilt rewards') ||
+      t.includes('bilt obsidian') || t.includes('bilt card')) {
     console.log('[Parser] Detected bank: Bilt');
     return 'bilt';
   }
@@ -686,11 +698,6 @@ function detectBank(text) {
   if (t.includes('capital one') || t.includes('capitalone.com')) {
     console.log('[Parser] Detected bank: Capital One');
     return 'capital-one';
-  }
-
-  if (t.includes('wells fargo') || t.includes('wellsfargo.com')) {
-    console.log('[Parser] Detected bank: Wells Fargo');
-    return 'wells-fargo';
   }
 
   console.warn('[Parser] Could not detect bank from text');
