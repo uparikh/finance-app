@@ -886,23 +886,38 @@ function parseAlly(text, pages) {
     }
 
     /**
+     * Starting at index `startIdx` in `trimmedLines`, collects all consecutive
+     * continuation lines (lines that don't start with MM/DD/YYYY) and returns
+     * them joined as a single string, plus the number of lines consumed.
+     *
+     * @param {number} startIdx  Index of the first potential continuation line
+     * @returns {{ text: string, consumed: number }}
+     */
+    function collectContinuationLines(startIdx) {
+      const parts = [];
+      let j = startIdx;
+      while (j < trimmedLines.length && isContinuationLine(trimmedLines[j])) {
+        parts.push(trimmedLines[j]);
+        j++;
+      }
+      return { text: parts.join(' ').trim(), consumed: j - startIdx };
+    }
+
+    /**
      * Given the raw description from the transaction line (e.g. "ACH Withdrawal")
-     * and the next non-empty continuation line (e.g. "Edgeworks Climbi PAYMENT"),
-     * return the best merchant description to use.
+     * and the joined continuation text that follows it, returns the best merchant
+     * description to use.
      *
      * Rules:
-     *  - "ACH Withdrawal" → use the continuation line as the merchant description
-     *  - "WEB Funds Transfer" → keep as-is (category will be forced to transfer)
-     *  - Everything else → keep the original description
+     *  - "ACH Withdrawal"      → use the continuation text as the merchant description
+     *  - "Check Card Purchase" → use the continuation text as the merchant description
+     *  - "WEB Funds Transfer"  → keep as-is (category will be forced to transfer)
+     *  - Everything else       → keep the original description
      */
-    function resolveAllyDescription(desc, continuationLine) {
-      const descLower = desc.toLowerCase().trim();
-
-      // ACH Withdrawal: the real merchant is on the next line
-      if (/^ach\s+withdrawal/i.test(descLower)) {
-        // Use the continuation line, but strip trailing repeated keywords
-        // e.g. "Edgeworks Climbi PAYMENT\nPAYMENT" → use "Edgeworks Climbi PAYMENT"
-        return continuationLine || desc;
+    function resolveAllyDescription(desc, continuationText) {
+      // ACH Withdrawal or Check Card Purchase: the real merchant is on the next line(s)
+      if (/^ach\s+withdrawal/i.test(desc) || /^check\s+card\s+purchase/i.test(desc)) {
+        return continuationText || desc;
       }
 
       // For all other types (WEB Funds Transfer, eCheck Deposit, etc.)
@@ -1002,22 +1017,13 @@ function parseAlly(text, pages) {
         const date = parseDate_MMDDYYYY(dateStr);
         if (!date) { result.parseErrors.push(`Ally: invalid date: ${line}`); continue; }
 
-        // Look ahead: if next line is a continuation, use it to resolve merchant
-        const nextLine = (i + 1 < trimmedLines.length && isContinuationLine(trimmedLines[i + 1]))
-          ? trimmedLines[i + 1]
-          : null;
-        const resolvedDesc = resolveAllyDescription(desc, nextLine);
+        // Look ahead: collect all continuation lines following this transaction
+        const { text: continuationText, consumed } = collectContinuationLines(i + 1);
+        const resolvedDesc = resolveAllyDescription(desc, continuationText);
 
-        // Skip the continuation line(s) so they aren't re-processed
-        if (nextLine && resolvedDesc !== desc) {
-          i++; // consumed the merchant continuation line
-          // Also skip a second continuation line if it's a repeated keyword
-          // e.g. "PAYMENT" repeated on its own line after "Edgeworks Climbi PAYMENT"
-          if (i + 1 < trimmedLines.length && isContinuationLine(trimmedLines[i + 1])) {
-            const afterNext = trimmedLines[i + 1];
-            // Skip if it's a short repeated word (≤20 chars, no date, no dollar)
-            if (afterNext.length <= 20 && !/\$/.test(afterNext)) i++;
-          }
+        // Advance i past the continuation lines we consumed for the merchant name
+        if (consumed > 0 && resolvedDesc !== desc) {
+          i += consumed;
         }
 
         const tx = buildTransaction({ date, description: resolvedDesc, amount, accountId, accountType });
@@ -1037,18 +1043,13 @@ function parseAlly(text, pages) {
         const date = parseDate_MMDDYYYY(dateStr);
         if (!date) { result.parseErrors.push(`Ally: invalid date: ${line}`); continue; }
 
-        // Look ahead for continuation line
-        const nextLine = (i + 1 < trimmedLines.length && isContinuationLine(trimmedLines[i + 1]))
-          ? trimmedLines[i + 1]
-          : null;
-        const resolvedDesc = resolveAllyDescription(desc, nextLine);
+        // Look ahead: collect all continuation lines following this transaction
+        const { text: continuationText, consumed } = collectContinuationLines(i + 1);
+        const resolvedDesc = resolveAllyDescription(desc, continuationText);
 
-        if (nextLine && resolvedDesc !== desc) {
-          i++;
-          if (i + 1 < trimmedLines.length && isContinuationLine(trimmedLines[i + 1])) {
-            const afterNext = trimmedLines[i + 1];
-            if (afterNext.length <= 20 && !/\$/.test(afterNext)) i++;
-          }
+        // Advance i past the continuation lines we consumed for the merchant name
+        if (consumed > 0 && resolvedDesc !== desc) {
+          i += consumed;
         }
 
         const tx = buildTransaction({ date, description: resolvedDesc, amount: rawAmount, accountId, accountType });
