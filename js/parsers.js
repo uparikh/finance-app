@@ -241,6 +241,7 @@ const MERCHANT_DISPLAY_NAMES = {
   'zoom':                 'Zoom',
 
   // ── Health & Fitness ──────────────────────────────────────────────────────
+  'edgeworks':            'Edgeworks',           // Ally ACH: "Edgeworks Climbi PAYMENT" (climbing gym)
   'planet fitness':       'Planet Fitness',
   'equinox':              'Equinox',
   'la fitness':           'LA Fitness',
@@ -249,6 +250,7 @@ const MERCHANT_DISPLAY_NAMES = {
   'peloton':              'Peloton',
 
   // ── Finance & Banking ─────────────────────────────────────────────────────
+  'fid bkg svc':          'Fidelity Transfer',   // Ally ACH: "FID BKG SVC LLC MONEYLINE"
   'zelle':                'Zelle Transfer',
   'venmo':                'Venmo',
   'paypal':               'PayPal',
@@ -862,9 +864,107 @@ function parseAlly(text, pages) {
 
     let inTransactionSection = false;
 
-    for (const rawLine of lines) {
-      const line = rawLine.trim();
-      if (!line) continue;
+    // ── Ally ACH Withdrawal look-ahead ────────────────────────────────────────
+    // Ally statements print ACH Withdrawals as two lines:
+    //   Line 1: MM/DD/YYYY  ACH Withdrawal  $0.00  -$109.20  $795.07
+    //   Line 2: Edgeworks Climbi PAYMENT          ← actual merchant name
+    //   Line 3: PAYMENT                           ← repeated keyword (skip)
+    //
+    // Similarly for WEB Funds Transfer:
+    //   Line 1: MM/DD/YYYY  WEB Funds Transfer  $500.00  -$0.00  $2,904.27
+    //   Line 2: Requested transfer from ALLY BANK  ← detail (not a merchant)
+    //
+    // Strategy: use index-based loop so we can peek at lines[i+1] when we
+    // detect an ACH Withdrawal or similar continuation-style transaction.
+
+    /**
+     * Returns true if a line looks like a transaction continuation/detail line
+     * rather than a new transaction (i.e. does NOT start with MM/DD/YYYY).
+     */
+    function isContinuationLine(l) {
+      return l.length > 0 && !/^\d{2}\/\d{2}\/\d{4}/.test(l);
+    }
+
+    /**
+     * Given the raw description from the transaction line (e.g. "ACH Withdrawal")
+     * and the next non-empty continuation line (e.g. "Edgeworks Climbi PAYMENT"),
+     * return the best merchant description to use.
+     *
+     * Rules:
+     *  - "ACH Withdrawal" → use the continuation line as the merchant description
+     *  - "WEB Funds Transfer" → keep as-is (category will be forced to transfer)
+     *  - Everything else → keep the original description
+     */
+    function resolveAllyDescription(desc, continuationLine) {
+      const descLower = desc.toLowerCase().trim();
+
+      // ACH Withdrawal: the real merchant is on the next line
+      if (/^ach\s+withdrawal/i.test(descLower)) {
+        // Use the continuation line, but strip trailing repeated keywords
+        // e.g. "Edgeworks Climbi PAYMENT\nPAYMENT" → use "Edgeworks Climbi PAYMENT"
+        return continuationLine || desc;
+      }
+
+      // For all other types (WEB Funds Transfer, eCheck Deposit, etc.)
+      // keep the original description — category override handles WEB Funds Transfer
+      return desc;
+    }
+
+    /**
+     * Applies Ally-specific category overrides AFTER buildTransaction().
+     * Called with the transaction object and the raw description used.
+     *
+     * Overrides:
+     *  - "WEB Funds Transfer"  → transfer
+     *  - "FID BKG SVC"         → transfer  (Fidelity money-line)
+     *  - "Edgeworks"           → health    (climbing gym)
+     *  - "Interest Paid"       → income
+     */
+    function applyAllyOverrides(tx, rawDesc) {
+      const d = rawDesc.toLowerCase();
+
+      if (/web\s+funds\s+transfer/i.test(d) ||
+          /internet\s+transfer/i.test(d) ||
+          /requested\s+transfer/i.test(d)) {
+        tx.categoryId = 'transfer';
+        return;
+      }
+
+      if (/fid\s+bkg\s+svc/i.test(d)) {
+        tx.merchantName = 'Fidelity Transfer';
+        tx.categoryId   = 'transfer';
+        return;
+      }
+
+      if (/discover\s+e-payment|discover\s+epayment/i.test(d)) {
+        tx.merchantName = 'Discover Payment';
+        tx.categoryId   = 'transfer';
+        return;
+      }
+
+      if (/wells\s+fargo\s+card|biltcrdcrd/i.test(d)) {
+        tx.merchantName = 'WF Payment';
+        tx.categoryId   = 'transfer';
+        return;
+      }
+
+      if (/edgeworks/i.test(d)) {
+        tx.merchantName = 'Edgeworks';
+        tx.categoryId   = 'health';
+        return;
+      }
+
+      if (/interest\s+paid/i.test(d)) {
+        tx.categoryId = 'income';
+        return;
+      }
+    }
+
+    // Build a flat array of trimmed, non-empty lines for index-based access
+    const trimmedLines = lines.map(l => l.trim()).filter(l => l.length > 0);
+
+    for (let i = 0; i < trimmedLines.length; i++) {
+      const line = trimmedLines[i];
 
       // Detect start of transaction activity section
       if (/^\s*Activity\s*$/i.test(line) || /transaction\s+history|account\s+activity|transaction\s+detail/i.test(line)) {
@@ -887,8 +987,6 @@ function parseAlly(text, pages) {
         const debit  = parseDollar(debitStr);
 
         // Net amount: credit is positive (income), debit is negative (expense)
-        // When credit > 0 and debit == 0: it's a deposit
-        // When debit > 0 and credit == 0: it's a withdrawal
         let amount;
         if (!isNaN(credit) && credit > 0 && (isNaN(debit) || debit === 0)) {
           amount = credit;   // deposit
@@ -904,7 +1002,27 @@ function parseAlly(text, pages) {
         const date = parseDate_MMDDYYYY(dateStr);
         if (!date) { result.parseErrors.push(`Ally: invalid date: ${line}`); continue; }
 
-        result.transactions.push(buildTransaction({ date, description: desc, amount, accountId, accountType }));
+        // Look ahead: if next line is a continuation, use it to resolve merchant
+        const nextLine = (i + 1 < trimmedLines.length && isContinuationLine(trimmedLines[i + 1]))
+          ? trimmedLines[i + 1]
+          : null;
+        const resolvedDesc = resolveAllyDescription(desc, nextLine);
+
+        // Skip the continuation line(s) so they aren't re-processed
+        if (nextLine && resolvedDesc !== desc) {
+          i++; // consumed the merchant continuation line
+          // Also skip a second continuation line if it's a repeated keyword
+          // e.g. "PAYMENT" repeated on its own line after "Edgeworks Climbi PAYMENT"
+          if (i + 1 < trimmedLines.length && isContinuationLine(trimmedLines[i + 1])) {
+            const afterNext = trimmedLines[i + 1];
+            // Skip if it's a short repeated word (≤20 chars, no date, no dollar)
+            if (afterNext.length <= 20 && !/\$/.test(afterNext)) i++;
+          }
+        }
+
+        const tx = buildTransaction({ date, description: resolvedDesc, amount, accountId, accountType });
+        applyAllyOverrides(tx, resolvedDesc);
+        result.transactions.push(tx);
         result.parsedCount++;
         continue;
       }
@@ -919,7 +1037,23 @@ function parseAlly(text, pages) {
         const date = parseDate_MMDDYYYY(dateStr);
         if (!date) { result.parseErrors.push(`Ally: invalid date: ${line}`); continue; }
 
-        result.transactions.push(buildTransaction({ date, description: desc, amount: rawAmount, accountId, accountType }));
+        // Look ahead for continuation line
+        const nextLine = (i + 1 < trimmedLines.length && isContinuationLine(trimmedLines[i + 1]))
+          ? trimmedLines[i + 1]
+          : null;
+        const resolvedDesc = resolveAllyDescription(desc, nextLine);
+
+        if (nextLine && resolvedDesc !== desc) {
+          i++;
+          if (i + 1 < trimmedLines.length && isContinuationLine(trimmedLines[i + 1])) {
+            const afterNext = trimmedLines[i + 1];
+            if (afterNext.length <= 20 && !/\$/.test(afterNext)) i++;
+          }
+        }
+
+        const tx = buildTransaction({ date, description: resolvedDesc, amount: rawAmount, accountId, accountType });
+        applyAllyOverrides(tx, resolvedDesc);
+        result.transactions.push(tx);
         result.parsedCount++;
         continue;
       }
