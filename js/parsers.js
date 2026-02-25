@@ -1668,23 +1668,32 @@ function parseDiscover(text, pages) {
 // ─── Parser: Wells Fargo Autograph Credit Card ────────────────────────────────
 
 /**
- * Parses a Wells Fargo Autograph credit card statement.
+ * Parses a Wells Fargo Autograph Visa Signature credit card statement.
  *
- * Expected line format (similar to Bilt but no $ sign):
- *   MM/DD/YY  DESCRIPTION  AMOUNT
- *   e.g. "01/15/26  AMAZON.COM 1234  47.99"
+ * Actual statement format (from real PDF):
  *
- * Also handles 4-digit years: MM/DD/YYYY
+ *   Purchases section:
+ *     CARD(4)  MM/DD  MM/DD  REFNUM(16-18)  DESCRIPTION [MCC] CITY STATE  AMOUNT
+ *     e.g. "8882  01/12  01/14  7536943QX2G63W01D  BAJA FRESH #30472 KENT WA  13.24"
+ *     e.g. "8128  02/04  02/04  F353100DP000F0301  FRED-MEYER #0031 RENTON 5411 WA  34.25"
+ *          (8128 entries may have a 4-digit MCC code embedded before the state)
  *
- * Regex breakdown:
- *   (\d{2}\/\d{2}\/\d{2,4})  — date MM/DD/YY or MM/DD/YYYY
- *   \s+(.+?)                  — description
- *   \s+([-]?\d{1,3}(?:,\d{3})*(?:\.\d{2})?)  — amount (no $ sign)
- *   \s*$
+ *   Payments section (no card prefix):
+ *     MM/DD  MM/DD  REFNUM  DESCRIPTION  AMOUNT
+ *     e.g. "02/04  02/04  8574110DL1WK3586X  ONLINE ACH PAYMENT REF #G5F22LFWVT  1,620.07"
+ *
+ *   Other Credits section (no card prefix):
+ *     MM/DD  MM/DD  REFNUM  DESCRIPTION  AMOUNT
+ *     e.g. "01/23  01/23  F229000D7000DA000  BILTPROTECT RENT ACH CREDIT  99.53"
+ *     (may be followed by a "BILTON" continuation line — skip it)
  *
  * Sign convention:
- *   PDF positive (purchase) → stored as NEGATIVE (expense)
- *   PDF negative (payment)  → stored as POSITIVE (credit/transfer)
+ *   Purchases → stored as NEGATIVE (expense)
+ *   Payments / Other Credits → stored as POSITIVE (income/transfer)
+ *
+ * Special skips:
+ *   - "LAST STATEMENT BAL FROM ACCT ENDING XXXX" — internal balance carry-over, skip
+ *   - "BILTON" continuation line after Bilt rent entries — noise, skip
  *
  * @param {string} text
  * @param {string[]} pages
@@ -1703,106 +1712,127 @@ function parseWellsFargo(text, pages) {
     const lines = text.split('\n');
     result.rawLineCount = lines.length;
 
-    // ── Real Wells Fargo Autograph format (from actual statement):
-    //
-    // Card Trans Post  Reference Number          Description              Credits  Charges
-    // Ending Date Date
-    // in
-    //
-    // 8882  01/12  01/14  7536943QX2G63W01D  BAJA FRESH #30472 KENT WA  13.24
-    // 8882  01/13  01/14  5544641QY4BXWWKTG  IKEA SEATLE REST RENTON WA  14.34
-    //
-    // Payments section (credits):
-    // 02/04  02/04  8574110DL1WK3586X  ONLINE ACH PAYMENT REF #G5F22LFWVT  1,620.07
-    //
-    // Pattern A: CARD(4)  MM/DD  MM/DD  REFNUM  DESCRIPTION  AMOUNT
-    //   card ending digits (4) + trans date + post date + ref# + desc + amount
-    //
-    // Pattern B: MM/DD  MM/DD  REFNUM  DESCRIPTION  AMOUNT
-    //   (payments section — no card prefix)
-    //
-    // Dates are MM/DD (no year) — infer year from statement period.
-    // Amounts have no $ sign. Positive = charge (expense). Credits are in a separate section.
+    const statYear  = period.year  || new Date().getFullYear();
+    const statMonth = period.month || new Date().getMonth() + 1;
 
-    // Reference numbers are alphanumeric, 16-18 chars
-    const refNumPattern = '[A-Z0-9]{10,20}';
+    // ── Reference number pattern ──────────────────────────────────────────────
+    // WF ref numbers are 16–18 alphanumeric chars (uppercase letters + digits).
+    // e.g. "7536943QX2G63W01D", "F353100DP000F0301", "8574110DL1WK3586X"
+    const refNumPat = '[A-Z0-9]{10,20}';
 
-    // Pattern A: 4-digit card suffix + trans date + post date + ref + desc + amount
-    // e.g. "8882   01/12   01/14   7536943QX2G63W01D   BAJA FRESH #30472 KENT WA   13.24"
+    // ── Pattern A: purchases/charges ─────────────────────────────────────────
+    // CARD(4)  MM/DD  MM/DD  REFNUM  DESCRIPTION  AMOUNT
+    // The description may contain a 4-digit MCC code before the 2-letter state
+    // (e.g. "FRED-MEYER #0031 RENTON 5411 WA") — cleanMerchantName handles that.
     const txRegexA = new RegExp(
       '^(\\d{4})\\s+(\\d{2}\\/\\d{2})\\s+(\\d{2}\\/\\d{2})\\s+' +
-      refNumPattern + '\\s+(.+?)\\s+([\\d,]+\\.\\d{2})\\s*$'
+      refNumPat + '\\s+(.+?)\\s+([\\d,]+\\.\\d{2})\\s*$'
     );
 
-    // Pattern B: trans date + post date + ref + desc + amount (no card prefix — payments)
-    // e.g. "02/04   02/04   8574110DL1WK3586X   ONLINE ACH PAYMENT REF #G5F22LFWVT   1,620.07"
+    // ── Pattern B: payments / other credits (no card prefix) ─────────────────
+    // MM/DD  MM/DD  REFNUM  DESCRIPTION  AMOUNT
     const txRegexB = new RegExp(
       '^(\\d{2}\\/\\d{2})\\s+(\\d{2}\\/\\d{2})\\s+' +
-      refNumPattern + '\\s+(.+?)\\s+([\\d,]+\\.\\d{2})\\s*$'
+      refNumPat + '\\s+(.+?)\\s+([\\d,]+\\.\\d{2})\\s*$'
     );
 
-    // Skip header/summary lines
-    const skipPatterns = /^(card|trans|post|reference|description|credits|charges|ending|date|in$|transactions|account|summary|total|fees|interest|minimum|payment\s+due|credit\s+limit|new\s+balance|previous\s+balance|continued|page\s+\d|wells\s+fargo|annual|days\s+in|balance\s+subject|type\s+of|purchases|cash\s+advances|apr|2026\s+totals|year-to-date|total\s+fees|total\s+interest|total\s+payments|total\s+other|total\s+purchases)/i;
+    // ── Skip patterns ─────────────────────────────────────────────────────────
+    // Covers all header, summary, boilerplate, and section-total lines.
+    const skipPatterns = /^(card|trans|post|reference|description|credits|charges|ending|date|in$|transactions|account|summary|total\s+fees|total\s+interest|total\s+payments|total\s+other|total\s+purchases|total\s+other\s+credits|fees|interest|minimum|payment\s+due|credit\s+limit|new\s+balance|previous\s+balance|continued|page\s+\d|wells\s+fargo|annual|days\s+in|balance\s+subject|type\s+of|cash\s+advances|apr|20\d{2}\s+totals|year-to-date|rewards|help\s+take|whether|get\s+started|do\s+we\s+have|don.t\s+miss|sign\s+in|udit|frisco|los\s+angeles|detach|amount|enclosed|send\s+general|we\s+accept|outside|late\s+payment|minimum\s+payment\s+warning|if\s+you|only\s+the|notice|this\s+page)/i;
 
-    // Track which section we're in (payments = credits, purchases = charges)
+    // Track section and transaction context
     let currentSection = 'purchases'; // default
     let inTransactionSection = false;
-    const statYear = period.year || new Date().getFullYear();
 
     for (const rawLine of lines) {
       const line = rawLine.trim();
       if (!line) continue;
 
-      // Detect section changes
-      if (/^Payments\s*$/i.test(line)) { currentSection = 'payments'; inTransactionSection = true; continue; }
-      if (/^Other\s+Credits\s*$/i.test(line)) { currentSection = 'credits'; inTransactionSection = true; continue; }
-      if (/^Purchases|Balance\s+Transfers|Other\s+Charges/i.test(line)) { currentSection = 'purchases'; inTransactionSection = true; continue; }
-      if (/^Transactions\s*$/i.test(line) || /^Transactions\s+\(continued/i.test(line)) { inTransactionSection = true; continue; }
-      if (/^Fees\s+Charged|^Interest\s+Charged/i.test(line)) { inTransactionSection = false; continue; }
+      // ── Section detection ─────────────────────────────────────────────────
+      if (/^Payments\s*$/i.test(line)) {
+        currentSection = 'payments'; inTransactionSection = true; continue;
+      }
+      if (/^Other\s+Credits\s*$/i.test(line)) {
+        currentSection = 'credits'; inTransactionSection = true; continue;
+      }
+      if (/^Purchases[,\s]|^Purchases\s*$|Balance\s+Transfers|Other\s+Charges/i.test(line)) {
+        currentSection = 'purchases'; inTransactionSection = true; continue;
+      }
+      if (/^Transactions\s*$/i.test(line) || /^Transactions\s+\(continued/i.test(line)) {
+        inTransactionSection = true; continue;
+      }
+      if (/^Fees\s+Charged|^Interest\s+Charged|^TOTAL\s+FEES|^TOTAL\s+INTEREST/i.test(line)) {
+        inTransactionSection = false; continue;
+      }
 
+      // ── Skip boilerplate ──────────────────────────────────────────────────
       if (skipPatterns.test(line)) continue;
 
-      // Try Pattern A (with card suffix prefix)
+      // ── Skip noise continuation lines ─────────────────────────────────────
+      // "BILTON" appears after Bilt rent entries (truncated "BILT ON" label)
+      if (/^BILTON\s*$/i.test(line)) continue;
+      // Internal balance carry-over from a sub-card account — not a real transaction
+      if (/last\s+statement\s+bal\s+from\s+acct/i.test(line)) continue;
+
+      // ── Try Pattern A (purchases — with 4-digit card suffix) ─────────────
       let match = line.match(txRegexA);
       if (match) {
         const [, , transDateStr, , desc, amountStr] = match;
         const rawAmount = parseFloat(amountStr.replace(/,/g, ''));
         if (isNaN(rawAmount)) continue;
 
-        const date = parseDate_MMDD(transDateStr, statYear, period.month);
+        const date = parseDate_MMDD(transDateStr, statYear, statMonth);
         if (!date) continue;
 
-        // Payments/credits are positive (reduce balance), purchases are negative (expense)
-        const storedAmount = (currentSection === 'payments' || currentSection === 'credits')
-          ? rawAmount    // credit/payment = positive
-          : -rawAmount;  // purchase = negative (expense)
+        // Strip embedded 4-digit MCC codes from description
+        // e.g. "FRED-MEYER #0031 RENTON 5411 WA" → "FRED-MEYER #0031 RENTON WA"
+        const cleanDesc = desc.replace(/\s+\d{4}(?=\s+[A-Z]{2}\s*$)/, '');
 
-        result.transactions.push(buildTransaction({
-          date, description: desc, amount: storedAmount,
+        // Purchases are negative (expense); credits section entries are positive
+        const storedAmount = (currentSection === 'payments' || currentSection === 'credits')
+          ? rawAmount
+          : -rawAmount;
+
+        const tx = buildTransaction({
+          date, description: cleanDesc, amount: storedAmount,
           accountId: 'wells-fargo-credit', accountType: 'credit',
-        }));
+        });
+
+        // Override category for known transfer/credit types
+        if (/biltprotect|bilt\s+rent/i.test(cleanDesc)) tx.categoryId = 'transfer';
+        if (/online\s+ach\s+payment|bill\s+pay/i.test(cleanDesc)) tx.categoryId = 'transfer';
+
+        result.transactions.push(tx);
         result.parsedCount++;
         continue;
       }
 
-      // Try Pattern B (no card suffix — payments section)
+      // ── Try Pattern B (payments / other credits — no card suffix) ─────────
       match = line.match(txRegexB);
       if (match) {
         const [, transDateStr, , desc, amountStr] = match;
         const rawAmount = parseFloat(amountStr.replace(/,/g, ''));
         if (isNaN(rawAmount)) continue;
 
-        const date = parseDate_MMDD(transDateStr, statYear, period.month);
+        const date = parseDate_MMDD(transDateStr, statYear, statMonth);
         if (!date) continue;
 
         const storedAmount = (currentSection === 'payments' || currentSection === 'credits')
           ? rawAmount
           : -rawAmount;
 
-        result.transactions.push(buildTransaction({
+        const tx = buildTransaction({
           date, description: desc, amount: storedAmount,
           accountId: 'wells-fargo-credit', accountType: 'credit',
-        }));
+        });
+
+        // Payments and ACH credits are always transfers
+        if (currentSection === 'payments' || currentSection === 'credits') {
+          tx.categoryId = 'transfer';
+        }
+        if (/biltprotect|bilt\s+rent/i.test(desc)) tx.categoryId = 'transfer';
+
+        result.transactions.push(tx);
         result.parsedCount++;
         continue;
       }
